@@ -24,11 +24,14 @@ import os
 
 
 # Path to data dir
-_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+#_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+_DATA_DIR = r'/home/yxzh/dataset/icpr2018'
 
 # Required dataset entry keys
 IM_DIR = 'image_directory'
 ANN_FN = 'annotation_file'
+ANN_DIR = 'annotation_directory'
+NAMELIST = 'the name list file records all the images name'
 
 # Optional dataset entry keys
 IM_PREFIX = 'image_prefix'
@@ -37,6 +40,14 @@ RAW_DIR = 'raw_dir'
 
 # Available datasets
 DATASETS = {
+    'odai_train': {
+        IM_DIR:
+            _DATA_DIR + '/train/images/images',
+        ANN_DIR:
+            _DATA_DIR + '/train/labelTxt/labelTxt',
+        NAMELIST:
+            '/home/yxzh/dataset/icpr2018/train/images/test_list.txt'
+    },
     'cityscapes_fine_instanceonly_seg_train': {
         IM_DIR:
             _DATA_DIR + '/cityscapes/images',

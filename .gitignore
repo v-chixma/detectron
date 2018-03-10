@@ -22,3 +22,9 @@ lib/datasets/data/*
 
 # Generated C files
 lib/utils/cython_*.c
+
+#training output 
+train/*
+
+#pretrained models
+pretrained_models/*

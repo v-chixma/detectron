@@ -31,6 +31,7 @@ import logging
 import numpy as np
 import os
 import scipy.sparse
+import cv2
 
 # Must happen before importing COCO API (which imports matplotlib)
 import utils.env as envu
@@ -41,6 +42,8 @@ from pycocotools.coco import COCO
 
 from core.config import cfg
 from datasets.dataset_catalog import ANN_FN
+from datasets.dataset_catalog import ANN_DIR
+from datasets.dataset_catalog import NAMELIST
 from datasets.dataset_catalog import DATASETS
 from datasets.dataset_catalog import IM_DIR
 from datasets.dataset_catalog import IM_PREFIX
@@ -49,6 +52,348 @@ import utils.boxes as box_utils
 
 logger = logging.getLogger(__name__)
 
+class TxtDataset(object):
+    """A class representing a COCO json dataset."""
+
+    def __init__(self, name):
+        assert name in DATASETS.keys(), \
+            'Unknown dataset name: {}'.format(name)
+        assert os.path.exists(DATASETS[name][IM_DIR]), \
+            'Image directory \'{}\' not found'.format(DATASETS[name][IM_DIR])
+        assert os.path.exists(DATASETS[name][ANN_DIR]), \
+            'Annotation directory \'{}\' not found'.format(DATASETS[name][ANN_DIR])
+        logger.debug('Creating: {}'.format(name))
+        self.name = name
+        self.image_directory = DATASETS[name][IM_DIR]
+        self.annotation_directory = DATASETS[name][ANN_DIR]
+        self.image_prefix = (
+            '' if IM_PREFIX not in DATASETS[name] else DATASETS[name][IM_PREFIX]
+        )
+        #self.COCO = COCO(DATASETS[name][ANN_FN])
+        self.debug_timer = Timer()
+        self.cls_names = ['__background__',\
+                        'plane', 'ship', 'storage-tank', 'baseball-diamond', 'tennis-court', \
+                        'basketball-court', 'ground-track-field', 'harbor', 'bridge', 'large-vehicle', \
+                        'small-vehicle', 'helicopter', 'roundabout', 'soccer-ball-field', 'basketball-court']
+        # Set up dataset classes
+        #category_ids = self.COCO.getCatIds()
+        #categories = [c['name'] for c in self.COCO.loadCats(category_ids)]
+        category_ids = [i+1 for i in range(len(self.cls_names))]
+        categories = self.cls_names[1:]
+
+        self.category_to_id_map = dict(zip(categories, category_ids))
+        self.classes = ['__background__'] + categories
+        self.num_classes = len(self.classes)
+        self.json_category_id_to_contiguous_id = {
+            v: i + 1
+            for i, v in enumerate(category_ids)
+        }
+        self.contiguous_category_id_to_json_id = {
+            v: k
+            for k, v in self.json_category_id_to_contiguous_id.items()
+        }
+        self._init_keypoints()
+        #self.dataset_size = int(DATASETS[name][SIZE])
+        self.namelist = DATASETS[name][NAMELIST]
+
+
+    def get_roidb(
+        self,
+        gt=False,
+        proposal_file=None,
+        min_proposal_size=2,
+        proposal_limit=-1,
+        crowd_filter_thresh=0
+    ):
+        """Return an roidb corresponding to the json dataset. Optionally:
+           - include ground truth boxes in the roidb
+           - add proposals specified in a proposals file
+           - filter proposals based on a minimum side length
+           - filter proposals that intersect with crowd regions
+        """
+        assert gt is True or crowd_filter_thresh == 0, \
+            'Crowd filter threshold must be 0 if ground-truth annotations ' \
+            'are not included.'
+        #image_ids = self.COCO.getImgIds()
+        namelist = open(self.namelist,'r')
+        names = namelist.readlines()
+        image_ids = [int(i[1:]) for i in names]
+        #image_ids = [i for i in range(self.dataset_size)]
+        image_ids.sort()
+        self.dataset_size = len(image_ids)
+        #roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
+        roidb = [dict()] * self.dataset_size
+        for idx, entry in zip(image_ids,roidb):
+            suffix = '.png'
+            entry['id'] = idx
+            entry['file_name'] = 'P%04d' %idx + suffix
+            self._prep_roidb_entry(entry)
+        if gt:
+            # Include ground-truth object annotations
+            self.debug_timer.tic()
+            for entry in roidb:
+                self._add_gt_annotations(entry)
+            logger.debug(
+                '_add_gt_annotations took {:.3f}s'.
+                format(self.debug_timer.toc(average=False))
+            )
+        if proposal_file is not None:
+            # Include proposals from a file
+            self.debug_timer.tic()
+            self._add_proposals_from_file(
+                roidb, proposal_file, min_proposal_size, proposal_limit,
+                crowd_filter_thresh
+            )
+            logger.debug(
+                '_add_proposals_from_file took {:.3f}s'.
+                format(self.debug_timer.toc(average=False))
+            )
+        _add_class_assignments(roidb)
+        return roidb
+
+    def _prep_roidb_entry(self, entry):
+        """Adds empty metadata fields to an roidb entry."""
+        # Reference back to the parent dataset
+        entry['dataset'] = self
+        # Make file_name an abs path
+        im_path = os.path.join(
+            self.image_directory, self.image_prefix + entry['file_name']
+        )
+        assert os.path.exists(im_path), 'Image \'{}\' not found'.format(im_path)
+        entry['image'] = im_path
+        ann_path = os.path.join(self.annotation_directory, entry['file_name'][:-4]+'.txt')
+        assert os.path.exists(ann_path), 'Annotation \'{}\' not found'.format(ann_path)
+        entry['annotation'] = ann_path
+        entry['flipped'] = False
+        entry['has_visible_keypoints'] = False
+        # Empty placeholders
+        entry['boxes'] = np.empty((0, 4), dtype=np.float32)
+        entry['segms'] = []
+        entry['gt_classes'] = np.empty((0), dtype=np.int32)
+        entry['seg_areas'] = np.empty((0), dtype=np.float32)
+        entry['gt_overlaps'] = scipy.sparse.csr_matrix(
+            np.empty((0, self.num_classes), dtype=np.float32)
+        )
+        entry['is_crowd'] = np.empty((0), dtype=np.bool)
+        # 'box_to_gt_ind_map': Shape is (#rois). Maps from each roi to the index
+        # in the list of rois that satisfy np.where(entry['gt_classes'] > 0)
+        entry['box_to_gt_ind_map'] = np.empty((0), dtype=np.int32)
+        if self.keypoints is not None:
+            entry['gt_keypoints'] = np.empty(
+                (0, 3, self.num_keypoints), dtype=np.int32
+            )
+        # Remove unwanted fields that come from the json file (if they exist)
+        for k in ['date_captured', 'url', 'license', 'file_name']:
+            if k in entry:
+                del entry[k]
+        #read im to get its width and height
+        im = cv2.imread(entry['image'])
+        print("Reading image:{}\n".format(entry['image']))
+        entry['width'] = im.shape[1]
+        entry['height'] = im.shape[0]
+
+
+    def _add_gt_annotations(self, entry):
+        """Add ground truth annotation metadata to an roidb entry."""
+        #ann_ids = self.COCO.getAnnIds(imgIds=entry['id'], iscrowd=None)
+        #objs = self.COCO.loadAnns(ann_ids)
+        ann_file = open(entry['annotation'],'r')
+        objs = ann_file.readlines()[2:]
+        
+        # Sanitize bboxes -- some are invalid
+        valid_objs = []
+        valid_segms = []
+        width = entry['width']
+        height = entry['height']
+        for obj in objs:
+            obj = obj.strip().split(' ')
+            assert len(obj) == 10, "There is an error in the annotation file: {}".format(entry['ann_path'])
+            obj_dict = {}
+            obj_dict['category_id'] = self.category_to_id_map[obj[8]]
+            obj_dict['difficult'] = obj[9] # 1 for difficult; 0 for not difficult
+            obj_dict['iscrowd'] = 0 # this attribute is from coco, set it to be 0 for default
+            obj_dict['segmentation'] = [[int(i) for i in obj[:8]]]
+            obj_dict['area'] = calcArea(obj_dict['segmentation'][0])
+            if obj_dict['area'] < cfg.TRAIN.GT_MIN_AREA:
+                continue
+            #if obj_dict['difficult'] == 1 and cfg.TRAIN.SKIP_DIFFICULT_OBJ:
+            #    continue
+            if 'ignore' in obj_dict and obj_dict['ignore'] == 1:
+                continue
+            x1 = np.min(obj_dict['segmentation'][0][0::2])
+            x2 = np.max(obj_dict['segmentation'][0][0::2])
+            y1 = np.min(obj_dict['segmentation'][0][1::2])
+            y2 = np.max(obj_dict['segmentation'][0][1::2])
+
+            obj_dict['bbox'] = [x1,y1,x2-x1+1,y2-y1+1]
+
+            # Convert form (x1, y1, w, h) to (x1, y1, x2, y2)
+            #x1, y1, x2, y2 = box_utils.xywh_to_xyxy(obj['bbox'])
+            x1, y1, x2, y2 = box_utils.clip_xyxy_to_image(
+                x1, y1, x2, y2, height, width
+            )
+            # Require non-zero seg area and more than 1x1 box size
+            if obj_dict['area'] > 0 and x2 > x1 and y2 > y1:
+                obj_dict['clean_bbox'] = [x1, y1, x2, y2]
+                valid_objs.append(copy.deepcopy(obj_dict))
+                valid_segms.append(copy.deepcopy(obj_dict['segmentation']))
+        num_valid_objs = len(valid_objs)
+
+        boxes = np.zeros((num_valid_objs, 4), dtype=entry['boxes'].dtype)
+        gt_classes = np.zeros((num_valid_objs), dtype=entry['gt_classes'].dtype)
+        gt_overlaps = np.zeros(
+            (num_valid_objs, self.num_classes),
+            dtype=entry['gt_overlaps'].dtype
+        )
+        seg_areas = np.zeros((num_valid_objs), dtype=entry['seg_areas'].dtype)
+        is_crowd = np.zeros((num_valid_objs), dtype=entry['is_crowd'].dtype)
+        box_to_gt_ind_map = np.zeros(
+            (num_valid_objs), dtype=entry['box_to_gt_ind_map'].dtype
+        )
+        if self.keypoints is not None:
+            gt_keypoints = np.zeros(
+                (num_valid_objs, 3, self.num_keypoints),
+                dtype=entry['gt_keypoints'].dtype
+            )
+
+        im_has_visible_keypoints = False
+        for ix, obj in enumerate(valid_objs):
+            cls = self.json_category_id_to_contiguous_id[obj['category_id']]
+            boxes[ix, :] = obj['clean_bbox']
+            gt_classes[ix] = cls
+            seg_areas[ix] = obj['area']
+            is_crowd[ix] = obj['iscrowd']
+            box_to_gt_ind_map[ix] = ix
+            if self.keypoints is not None:
+                gt_keypoints[ix, :, :] = self._get_gt_keypoints(obj)
+                if np.sum(gt_keypoints[ix, 2, :]) > 0:
+                    im_has_visible_keypoints = True
+            if obj['iscrowd']:
+                # Set overlap to -1 for all classes for crowd objects
+                # so they will be excluded during training
+                gt_overlaps[ix, :] = -1.0
+            else:
+                gt_overlaps[ix, cls] = 1.0
+        entry['boxes'] = np.append(entry['boxes'], boxes, axis=0)
+        entry['segms'].extend(valid_segms)
+        # To match the original implementation:
+        # entry['boxes'] = np.append(
+        #     entry['boxes'], boxes.astype(np.int).astype(np.float), axis=0)
+        entry['gt_classes'] = np.append(entry['gt_classes'], gt_classes)
+        entry['seg_areas'] = np.append(entry['seg_areas'], seg_areas)
+        entry['gt_overlaps'] = np.append(
+            entry['gt_overlaps'].toarray(), gt_overlaps, axis=0
+        )
+        entry['gt_overlaps'] = scipy.sparse.csr_matrix(entry['gt_overlaps'])
+        entry['is_crowd'] = np.append(entry['is_crowd'], is_crowd)
+        entry['box_to_gt_ind_map'] = np.append(
+            entry['box_to_gt_ind_map'], box_to_gt_ind_map
+        )
+        if self.keypoints is not None:
+            entry['gt_keypoints'] = np.append(
+                entry['gt_keypoints'], gt_keypoints, axis=0
+            )
+            entry['has_visible_keypoints'] = im_has_visible_keypoints
+
+    def _add_proposals_from_file(
+        self, roidb, proposal_file, min_proposal_size, top_k, crowd_thresh
+    ):
+        """Add proposals from a proposals file to an roidb."""
+        logger.info('Loading proposals from: {}'.format(proposal_file))
+        with open(proposal_file, 'r') as f:
+            proposals = pickle.load(f)
+        id_field = 'indexes' if 'indexes' in proposals else 'ids'  # compat fix
+        _sort_proposals(proposals, id_field)
+        box_list = []
+        for i, entry in enumerate(roidb):
+            if i % 2500 == 0:
+                logger.info(' {:d}/{:d}'.format(i + 1, len(roidb)))
+            boxes = proposals['boxes'][i]
+            # Sanity check that these boxes are for the correct image id
+            assert entry['id'] == proposals[id_field][i]
+            # Remove duplicate boxes and very small boxes and then take top k
+            boxes = box_utils.clip_boxes_to_image(
+                boxes, entry['height'], entry['width']
+            )
+            keep = box_utils.unique_boxes(boxes)
+            boxes = boxes[keep, :]
+            keep = box_utils.filter_small_boxes(boxes, min_proposal_size)
+            boxes = boxes[keep, :]
+            if top_k > 0:
+                boxes = boxes[:top_k, :]
+            box_list.append(boxes)
+        _merge_proposal_boxes_into_roidb(roidb, box_list)
+        if crowd_thresh > 0:
+            _filter_crowd_proposals(roidb, crowd_thresh)
+
+    def _init_keypoints(self):
+        """Initialize COCO keypoint information."""
+        self.keypoints = None
+        self.keypoint_flip_map = None
+        self.keypoints_to_id_map = None
+        self.num_keypoints = 0
+        # Thus far only the 'person' category has keypoints
+        if 'person' in self.category_to_id_map:
+            cat_info = self.COCO.loadCats([self.category_to_id_map['person']])
+        else:
+            return
+
+        # Check if the annotations contain keypoint data or not
+        if 'keypoints' in cat_info[0]:
+            keypoints = cat_info[0]['keypoints']
+            self.keypoints_to_id_map = dict(
+                zip(keypoints, range(len(keypoints))))
+            self.keypoints = keypoints
+            self.num_keypoints = len(keypoints)
+            self.keypoint_flip_map = {
+                'left_eye': 'right_eye',
+                'left_ear': 'right_ear',
+                'left_shoulder': 'right_shoulder',
+                'left_elbow': 'right_elbow',
+                'left_wrist': 'right_wrist',
+                'left_hip': 'right_hip',
+                'left_knee': 'right_knee',
+                'left_ankle': 'right_ankle'}
+
+    def _get_gt_keypoints(self, obj):
+        """Return ground truth keypoints."""
+        if 'keypoints' not in obj:
+            return None
+        kp = np.array(obj['keypoints'])
+        x = kp[0::3]  # 0-indexed x coordinates
+        y = kp[1::3]  # 0-indexed y coordinates
+        # 0: not labeled; 1: labeled, not inside mask;
+        # 2: labeled and inside mask
+        v = kp[2::3]
+        num_keypoints = len(obj['keypoints']) / 3
+        assert num_keypoints == self.num_keypoints
+        gt_kps = np.ones((3, self.num_keypoints), dtype=np.int32)
+        for i in range(self.num_keypoints):
+            gt_kps[0, i] = x[i]
+            gt_kps[1, i] = y[i]
+            gt_kps[2, i] = v[i]
+        return gt_kps
+def calcArea(points): 
+    m1,m2,n1,n2,j1,j2,k1,k2 = \
+        float(points[0]),float(points[1]),float(points[2]),float(points[3]),\
+        float(points[4]),float(points[5]),float(points[6]),float(points[7])
+    q1 = [m1,m2] 
+    q2 = [n1,n2] 
+    q3 = [j1,j2] 
+    q4 = [k1,k2] 
+    d12 = calcDistance(q1[0], q1[1], q2[0], q2[1]) 
+    d23 = calcDistance(q2[0], q2[1], q3[0], q3[1]) 
+    d34 = calcDistance(q3[0], q3[1], q4[0], q4[1]) 
+    d41 = calcDistance(q4[0], q4[1], q1[0], q1[1]) 
+    d24 = calcDistance(q2[0], q2[1], q4[0], q4[1]) 
+    k1 = (d12+d41+d24)/2 
+    k2 = (d23+d34+d24)/2 
+    s1 = (k1*(k1-d12)*(k1-d41)*(k1-d24))**0.5 
+    s2 = (k2*(k2-d23)*(k2-d34)*(k2-d24))**0.5 
+    s = s1+s2 
+    return s 
+def calcDistance(x1,y1,x2,y2):
+    return ((x1-x2)**2+(y1-y2)**2)**0.5
 
 class JsonDataset(object):
     """A class representing a COCO json dataset."""

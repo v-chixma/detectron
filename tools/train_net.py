@@ -30,7 +30,7 @@ import os
 import pprint
 import re
 import sys
-import test_net
+#import test_net
 
 from caffe2.python import memonger
 from caffe2.python import workspace
@@ -40,7 +40,7 @@ from core.config import cfg
 from core.config import get_output_dir
 from core.config import merge_cfg_from_file
 from core.config import merge_cfg_from_list
-from datasets.roidb import combined_roidb_for_training
+from datasets.roidb import combined_roidb_for_training, combined_roidb_for_training_odai
 from modeling import model_builder
 from utils import lr_policy
 from utils.logging import setup_logging
@@ -251,7 +251,10 @@ def add_model_training_inputs(model):
     """Load the training dataset and attach the training inputs to the model."""
     logger = logging.getLogger(__name__)
     logger.info('Loading dataset: {}'.format(cfg.TRAIN.DATASETS))
-    roidb = combined_roidb_for_training(
+    #roidb = combined_roidb_for_training(
+    #    cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
+    #)
+    roidb = combined_roidb_for_training_odai(
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
     )
     logger.info('{:d} roidb entries'.format(len(roidb)))
