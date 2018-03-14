@@ -25,6 +25,7 @@ from datasets import json_dataset
 import modeling.FPN as fpn
 import roi_data.fast_rcnn
 import utils.blob as blob_utils
+import pdb
 
 
 class CollectAndDistributeFpnRpnProposalsOp(object):
@@ -52,6 +53,7 @@ class CollectAndDistributeFpnRpnProposalsOp(object):
             # implementation we are *not* filtering crowd proposals.
             # This choice should be investigated in the future (it likely does
             # not matter).
+            #pdb.set_trace()
             json_dataset.add_proposals(roidb, rois, im_scales, crowd_thresh=0)
             # Compute training labels for the RPN proposals; also handles
             # distributing the proposals over FPN levels

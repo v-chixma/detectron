@@ -223,6 +223,144 @@ def bbox_transform_inv(boxes, gt_boxes, weights=(1.0, 1.0, 1.0, 1.0)):
                          targets_dh)).transpose()
     return targets
 
+def bbox_transform_poly(ex_rois, gt_rois):
+    ex_widths = ex_rois[:, 2] - ex_rois[:, 0] + 1.0
+    ex_heights = ex_rois[:, 3] - ex_rois[:, 1] + 1.0
+    ex_ctr_x = ex_rois[:, 0] + 0.5 * ex_widths
+    ex_ctr_y = ex_rois[:, 1] + 0.5 * ex_heights
+    '''
+    gt_rois=gt_rois.reshape(len(gt_rois),4,2)
+    gt_widths = np.linalg.norm((gt_rois[:, 0:1] - gt_rois[:, 1:2]),axis=-1)[:,0]
+    gt_heights = np.linalg.norm((gt_rois[:, 0:1] - gt_rois[:, 3:4]),axis=-1)[:,0]
+    gt_ctr=(gt_rois[:,0]+gt_rois[:,2])/2.
+    gt_ctr_x=gt_ctr[:,0]
+    gt_ctr_y=gt_ctr[:,1]    
+    '''
+    targets_x1=(gt_rois[:, 0]-ex_ctr_x)/ex_widths
+    targets_x2=(gt_rois[:, 2]-ex_ctr_x)/ex_widths
+    targets_x3=(gt_rois[:, 4]-ex_ctr_x)/ex_widths
+    targets_x4=(gt_rois[:, 6]-ex_ctr_x)/ex_widths
+    targets_x5=(gt_rois[:, 8]-ex_ctr_x)/ex_widths
+    targets_x6=(gt_rois[:, 10]-ex_ctr_x)/ex_widths
+    targets_x7=(gt_rois[:, 12]-ex_ctr_x)/ex_widths
+    targets_x8=(gt_rois[:, 14]-ex_ctr_x)/ex_widths
+    targets_x9=(gt_rois[:, 16]-ex_ctr_x)/ex_widths
+    targets_x10=(gt_rois[:, 18]-ex_ctr_x)/ex_widths
+    targets_x11=(gt_rois[:, 20]-ex_ctr_x)/ex_widths
+    targets_x12=(gt_rois[:, 22]-ex_ctr_x)/ex_widths
+    targets_x13=(gt_rois[:, 24]-ex_ctr_x)/ex_widths
+    targets_x14=(gt_rois[:, 26]-ex_ctr_x)/ex_widths
+
+
+
+    targets_y1=(gt_rois[:, 1]-ex_ctr_y)/ex_heights
+    targets_y2=(gt_rois[:, 3]-ex_ctr_y)/ex_heights
+    targets_y3=(gt_rois[:, 5]-ex_ctr_y)/ex_heights
+    targets_y4=(gt_rois[:, 7]-ex_ctr_y)/ex_heights
+    targets_y5=(gt_rois[:, 9]-ex_ctr_y)/ex_heights
+    targets_y6=(gt_rois[:, 11]-ex_ctr_y)/ex_heights
+    targets_y7=(gt_rois[:, 13]-ex_ctr_y)/ex_heights
+
+    targets_y8=(gt_rois[:, 15]-ex_ctr_y)/ex_heights
+    targets_y9=(gt_rois[:, 17]-ex_ctr_y)/ex_heights
+    targets_y10=(gt_rois[:, 19]-ex_ctr_y)/ex_heights
+    targets_y11=(gt_rois[:, 21]-ex_ctr_y)/ex_heights
+    targets_y12=(gt_rois[:, 23]-ex_ctr_y)/ex_heights
+    targets_y13=(gt_rois[:, 25]-ex_ctr_y)/ex_heights
+    targets_y14=(gt_rois[:, 27]-ex_ctr_y)/ex_heights
+
+
+    targets = np.vstack(
+        (targets_x1,targets_y1,targets_x2,targets_y2,targets_x3,targets_y3,targets_x4,targets_y4,targets_x5,targets_y5,targets_x6,targets_y6,targets_x7,targets_y7,
+            targets_x8,targets_y8,targets_x9,targets_y9,targets_x10,targets_y10,targets_x11,targets_y11,targets_x12,targets_y12,targets_x13,targets_y13,targets_x14,targets_y14,)).transpose()
+    #pdb.set_trace()
+    return targets
+
+
+
+def bbox_transform_inv_poly(boxes, deltas):
+    if boxes.shape[0] == 0:
+        return np.zeros((0, deltas.shape[1]), dtype=deltas.dtype)
+
+    boxes = boxes.astype(deltas.dtype, copy=False)
+
+    widths = boxes[:, 2] - boxes[:, 0] + 1.0
+    heights = boxes[:, 3] - boxes[:, 1] + 1.0
+    ctr_x = boxes[:, 0] + 0.5 * widths
+    ctr_y = boxes[:, 1] + 0.5 * heights
+
+    dx1 = deltas[:, 0::28]
+    dy1 = deltas[:, 1::28]
+    dx2 = deltas[:, 2::28]
+    dy2 = deltas[:, 3::28]
+    dx3 = deltas[:, 4::28]
+    dy3 = deltas[:, 5::28]
+    dx4 = deltas[:, 6::28]
+    dy4 = deltas[:, 7::28]
+    dx5 = deltas[:, 8::28]
+    dy5 = deltas[:, 9::28]
+    dx6 = deltas[:, 10::28]
+    dy6 = deltas[:, 11::28]
+    dx7 = deltas[:, 12::28]
+    dy7 = deltas[:, 13::28]
+
+    dx8 = deltas[:, 0+14::28]
+    dy8 = deltas[:, 1+14::28]
+    dx9 = deltas[:, 2+14::28]
+    dy9 = deltas[:, 3+14::28]
+    dx10 = deltas[:, 4+14::28]
+    dy10 = deltas[:, 5+14::28]
+    dx11 = deltas[:, 6+14::28]
+    dy11 = deltas[:, 7+14::28]
+    dx12 = deltas[:, 8+14::28]
+    dy12 = deltas[:, 9+14::28]
+    dx13 = deltas[:, 10+14::28]
+    dy13 = deltas[:, 11+14::28]
+    dx14 = deltas[:, 12+14::28]
+    dy14 = deltas[:, 13+14::28]
+
+    #pdb.set_trace()
+    pred_boxes = np.zeros(deltas.shape, dtype=deltas.dtype)
+    pred_boxes[:,0::28] = dx1 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,1::28] = dy1 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,2::28] = dx2 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,3::28] = dy2 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,4::28] = dx3 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,5::28] = dy3 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,6::28] = dx4 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,7::28] = dy4 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+
+    pred_boxes[:,0+8::28] = dx5 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,1+8::28] = dy5 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,2+8::28] = dx6 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,3+8::28] = dy6 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,4+8::28] = dx7 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,5+8::28] = dy7 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+
+
+    pred_boxes[:,0+14::28] = dx8 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,1+14::28] = dy8 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,2+14::28] = dx9 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,3+14::28] = dy9 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,4+14::28] = dx10 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,5+14::28] = dy10 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,6+14::28] = dx11 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,7+14::28] = dy11 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+
+    pred_boxes[:,0+8+14::28] = dx12 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,1+8+14::28] = dy12 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,2+8+14::28] = dx13 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,3+8+14::28] = dy13 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+    pred_boxes[:,4+8+14::28] = dx14 * widths[:, np.newaxis] + ctr_x[:, np.newaxis]
+    pred_boxes[:,5+8+14::28] = dy14 * heights[:, np.newaxis] + ctr_y[:, np.newaxis]
+
+
+
+
+
+    #pdb.set_trace()
+    return pred_boxes
+
 
 def expand_boxes(boxes, scale):
     """Expand an array of boxes by a given scale."""

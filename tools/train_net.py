@@ -48,6 +48,8 @@ from utils.training_stats import TrainingStats
 import utils.c2
 import utils.env as envu
 import utils.net as nu
+import pdb
+import cPickle 
 
 utils.c2.import_contrib_ops()
 utils.c2.import_detectron_ops()
@@ -55,7 +57,7 @@ utils.c2.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
 cv2.ocl.setUseOpenCL(False)
-
+roidb_cache_file = b'./cache/roidb.cache'
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -254,9 +256,19 @@ def add_model_training_inputs(model):
     #roidb = combined_roidb_for_training(
     #    cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
     #)
-    roidb = combined_roidb_for_training_odai(
-        cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
-    )
+    if os.path.exists(roidb_cache_file):
+        roidb = cPickle.load(open(roidb_cache_file,'rb'))
+        logger.info('Load roidb from cached file:{}'.format(roidb_cache_file))
+    else: 
+        roidb = combined_roidb_for_training_odai(
+            cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES
+        )
+        logger.info('Dumping roidb into cache file:{} for future reading'.format(roidb_cache_file))
+        cPickle.dump(roidb,open(roidb_cache_file,'wb',True))
+        logger.info('Dumping roidb into cache file:{} Done!'.format(roidb_cache_file))
+
+    #print(roidb[1])
+    #pdb.set_trace()
     logger.info('{:d} roidb entries'.format(len(roidb)))
     model_builder.add_training_inputs(model, roidb=roidb)
 

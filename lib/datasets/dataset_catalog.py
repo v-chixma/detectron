@@ -42,11 +42,11 @@ RAW_DIR = 'raw_dir'
 DATASETS = {
     'odai_train': {
         IM_DIR:
-            _DATA_DIR + '/train/images/images',
+            _DATA_DIR + '/train_split_cxma/images',
         ANN_DIR:
-            _DATA_DIR + '/train/labelTxt/labelTxt',
+            _DATA_DIR + '/train_split_cxma/labelTxt',
         NAMELIST:
-            '/home/yxzh/dataset/icpr2018/train/images/test_list.txt'
+            _DATA_DIR + '/train_split_cxma/name_list.txt'
     },
     'cityscapes_fine_instanceonly_seg_train': {
         IM_DIR:

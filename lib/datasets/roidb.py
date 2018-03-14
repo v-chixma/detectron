@@ -30,7 +30,7 @@ from datasets.json_dataset import TxtDataset
 import utils.boxes as box_utils
 import utils.keypoints as keypoint_utils
 import utils.segms as segm_utils
-
+import pdb
 logger = logging.getLogger(__name__)
 
 def combined_roidb_for_training_odai(dataset_names, proposal_files):
@@ -49,11 +49,13 @@ def combined_roidb_for_training_odai(dataset_names, proposal_files):
         #    logger.info('Appending horizontally-flipped training examples...')
         #    extend_with_flipped_entries(roidb, ds)
         ds = TxtDataset(dataset_name)
+        #pdb.set_trace()
         roidb = ds.get_roidb(
             gt=True,
             proposal_file=proposal_file,
             crowd_filter_thresh=cfg.TRAIN.CROWD_FILTER_THRESH
         )
+        #pdb.set_trace()
         if cfg.TRAIN.USE_FLIPPED:
             logger.info('Appending horizontally-flipped training examples...')
             extend_with_flipped_entries(roidb, ds)

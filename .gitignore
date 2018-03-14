@@ -24,7 +24,14 @@ lib/datasets/data/*
 lib/utils/cython_*.c
 
 #training output 
+tmp/*
 train/*
 
 #pretrained models
 pretrained_models/*
+
+lib/core/.nfs00000000051e2c9900000596
+
+log/*
+cache/*
+1

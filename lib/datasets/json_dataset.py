@@ -25,6 +25,10 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+
+import shapely.geometry
+from shapely.geometry import Polygon
+from shapely.geometry import LinearRing
 import copy
 import cPickle as pickle
 import logging
@@ -32,7 +36,7 @@ import numpy as np
 import os
 import scipy.sparse
 import cv2
-
+import pdb
 # Must happen before importing COCO API (which imports matplotlib)
 import utils.env as envu
 envu.set_up_matplotlib()
@@ -49,7 +53,7 @@ from datasets.dataset_catalog import IM_DIR
 from datasets.dataset_catalog import IM_PREFIX
 from utils.timer import Timer
 import utils.boxes as box_utils
-
+#pdb.set_trace()
 logger = logging.getLogger(__name__)
 
 class TxtDataset(object):
@@ -72,9 +76,9 @@ class TxtDataset(object):
         #self.COCO = COCO(DATASETS[name][ANN_FN])
         self.debug_timer = Timer()
         self.cls_names = ['__background__',\
-                        'plane', 'ship', 'storage-tank', 'baseball-diamond', 'tennis-court', \
-                        'basketball-court', 'ground-track-field', 'harbor', 'bridge', 'large-vehicle', \
-                        'small-vehicle', 'helicopter', 'roundabout', 'soccer-ball-field', 'basketball-court']
+                        'plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', \
+                        'large-vehicle', 'ship', 'tennis-court','basketball-court', 'storage-tank',  \
+                        'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter']
         # Set up dataset classes
         #category_ids = self.COCO.getCatIds()
         #categories = [c['name'] for c in self.COCO.loadCats(category_ids)]
@@ -117,22 +121,24 @@ class TxtDataset(object):
         #image_ids = self.COCO.getImgIds()
         namelist = open(self.namelist,'r')
         names = namelist.readlines()
-        image_ids = [int(i[1:]) for i in names]
-        #image_ids = [i for i in range(self.dataset_size)]
-        image_ids.sort()
+
+        image_ids = [i for i in range(len(names))]
+
+        #image_ids.sort()
         self.dataset_size = len(image_ids)
         #roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
-        roidb = [dict()] * self.dataset_size
-        for idx, entry in zip(image_ids,roidb):
-            suffix = '.png'
+        roidb = [{} for i in range(self.dataset_size)]
+        for idx, name, entry in zip(image_ids,names,roidb):
+            suffix = '.jpg'
             entry['id'] = idx
-            entry['file_name'] = 'P%04d' %idx + suffix
+            entry['file_name'] = name.strip() + suffix
             self._prep_roidb_entry(entry)
         if gt:
             # Include ground-truth object annotations
             self.debug_timer.tic()
             for entry in roidb:
                 self._add_gt_annotations(entry)
+            #pdb.set_trace()
             logger.debug(
                 '_add_gt_annotations took {:.3f}s'.
                 format(self.debug_timer.toc(average=False))
@@ -168,6 +174,7 @@ class TxtDataset(object):
         entry['has_visible_keypoints'] = False
         # Empty placeholders
         entry['boxes'] = np.empty((0, 4), dtype=np.float32)
+        entry['polyinters'] = np.empty((0, 28), dtype=np.float32)
         entry['segms'] = []
         entry['gt_classes'] = np.empty((0), dtype=np.int32)
         entry['seg_areas'] = np.empty((0), dtype=np.float32)
@@ -188,7 +195,8 @@ class TxtDataset(object):
                 del entry[k]
         #read im to get its width and height
         im = cv2.imread(entry['image'])
-        print("Reading image:{}\n".format(entry['image']))
+        #print("Reading image:{}\n".format(entry['image']))
+        logger.info("Reading image:{}\n".format(entry['image']))
         entry['width'] = im.shape[1]
         entry['height'] = im.shape[0]
 
@@ -198,7 +206,7 @@ class TxtDataset(object):
         #ann_ids = self.COCO.getAnnIds(imgIds=entry['id'], iscrowd=None)
         #objs = self.COCO.loadAnns(ann_ids)
         ann_file = open(entry['annotation'],'r')
-        objs = ann_file.readlines()[2:]
+        objs = ann_file.readlines()
         
         # Sanitize bboxes -- some are invalid
         valid_objs = []
@@ -210,9 +218,9 @@ class TxtDataset(object):
             assert len(obj) == 10, "There is an error in the annotation file: {}".format(entry['ann_path'])
             obj_dict = {}
             obj_dict['category_id'] = self.category_to_id_map[obj[8]]
-            obj_dict['difficult'] = obj[9] # 1 for difficult; 0 for not difficult
+            obj_dict['difficult'] = 0 if obj[9] == '0' else 1 # 1 for difficult; 0 for not difficult
             obj_dict['iscrowd'] = 0 # this attribute is from coco, set it to be 0 for default
-            obj_dict['segmentation'] = [[int(i) for i in obj[:8]]]
+            obj_dict['segmentation'] = [[int(float(i)) for i in obj[:8]]]
             obj_dict['area'] = calcArea(obj_dict['segmentation'][0])
             if obj_dict['area'] < cfg.TRAIN.GT_MIN_AREA:
                 continue
@@ -220,26 +228,108 @@ class TxtDataset(object):
             #    continue
             if 'ignore' in obj_dict and obj_dict['ignore'] == 1:
                 continue
+            plg = Polygon([(obj_dict['segmentation'][0][0],obj_dict['segmentation'][0][1]),\
+                        (obj_dict['segmentation'][0][2],obj_dict['segmentation'][0][3]),\
+                        (obj_dict['segmentation'][0][4],obj_dict['segmentation'][0][5]),\
+                        (obj_dict['segmentation'][0][6],obj_dict['segmentation'][0][7])])
+            if not plg.is_valid: 
+                continue
             x1 = np.min(obj_dict['segmentation'][0][0::2])
             x2 = np.max(obj_dict['segmentation'][0][0::2])
             y1 = np.min(obj_dict['segmentation'][0][1::2])
             y2 = np.max(obj_dict['segmentation'][0][1::2])
+            '''
+            line=np.arange(0,1,1/8.)
+            line=line[1:]
+            #line=line.reshape(1,len(line))
+            dx=x2-x1
+            dy=y2-y1
+            line_x=dx*line+x1
+            line_y=dy*line+y1
+            p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4=obj_dict['segmentation'][0]
 
-            obj_dict['bbox'] = [x1,y1,x2-x1+1,y2-y1+1]
+            p_x1, p_y1, p_x2, p_y2 = box_utils.clip_xyxy_to_image(
+                p_x1, p_y1, p_x2, p_y2, height, width
+            )
+            p_x3, p_y3, p_x4, p_y4 = box_utils.clip_xyxy_to_image(
+                p_x3, p_y3, p_x4, p_y4, height, width
+            )
+
+            
+            polygon = np.array([p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4],dtype=np.float32).reshape([-1,2])
+            shapely_poly = LinearRing(polygon)
+            inter_lt_x=[]
+            inter_lt_y=[]
+            for x in line_x:
+                line = [(x, -1000000.), (x, +100000000.)]
+                shapely_line = shapely.geometry.LineString(line)
+                inter=shapely_poly.intersection(shapely_line)
+                k=[var.xy for var in inter]
+                x=[np.array(var[0]) for var in k]
+                x=np.concatenate(x)[:,np.newaxis]
+                y=[np.array(var[1]) for var in k]
+                y=np.concatenate(y)[:,np.newaxis]
+                intersection_line=np.concatenate((x,y),-1)
+                idx_sort=np.argsort(intersection_line[:,1])
+                #pdb.set_trace()
+                intersection_line=[intersection_line[idx_sort[0]],intersection_line[idx_sort[-1]]]
+
+                assert len(intersection_line)==2
+                inter_lt_x.append(intersection_line)
+            for y in line_y:
+                line = [(-1000000.,y ), (+100000000.,y )]
+                shapely_line = shapely.geometry.LineString(line)
+                inter=shapely_poly.intersection(shapely_line)
+                k=[var.xy for var in inter]
+                x=[np.array(var[0]) for var in k]
+                x=np.concatenate(x)[:,np.newaxis]
+                y=[np.array(var[1]) for var in k]
+                y=np.concatenate(y)[:,np.newaxis]
+                intersection_line=np.concatenate((x,y),-1)
+                idx_sort=np.argsort(intersection_line[:,0])
+                #pdb.set_trace()
+                intersection_line=[intersection_line[idx_sort[0]],intersection_line[idx_sort[-1]]]
+
+                assert len(intersection_line)==2
+                inter_lt_y.append(intersection_line)
+            x_inter=np.array(inter_lt_x).reshape(-1,2)[:,1]
+            y_inter=np.array(inter_lt_y).reshape(-1,2)[:,0]
+            inter_lt_x=np.array(inter_lt_x).reshape(-1,2).astype(np.int32)
+            inter_lt_y=np.array(inter_lt_y).reshape(-1,2).astype(np.int32)
+
+            #
+            xy_inter=np.zeros(28,dtype=np.float32)
+            #xy_inter=np.concatenate((x_inter,y_inter))
+            xy_inter[::2]=y_inter
+            xy_inter[1::2]=x_inter
+            '''
+            
 
             # Convert form (x1, y1, w, h) to (x1, y1, x2, y2)
             #x1, y1, x2, y2 = box_utils.xywh_to_xyxy(obj['bbox'])
-            x1, y1, x2, y2 = box_utils.clip_xyxy_to_image(
-                x1, y1, x2, y2, height, width
-            )
+            
+            #x1, y1, x2, y2 = box_utils.clip_xyxy_to_image(
+            #    x1, y1, x2, y2, height, width
+            #)
+            obj_dict['bbox'] = [x1,y1,x2-x1+1,y2-y1+1]
+            #if (xy_inter[1::2]>y2).any() or (xy_inter[::2]>x2).any() or (xy_inter[1::2]<y1).any() or (xy_inter[::2]<x1).any():
+            #    pdb.set_trace()
+            #if abs(xy_inter[0]-596.19512939)<0.01:
+                    #pdb.set_trace()
+            #        pass
+            #if (xy_inter=np.array([596.19512939,974.35418701,613.63415527,994.50732422,595.39025879,  954.70831299,  612.82928467,  995.01470947,594.58538818,  953.46325684,  612.02441406,995.52203369,593.78051758,953.97058105, 611.21948242,  996.02941895,592.97558594,  954.47796631,  610.41461182,  996.53674316,592.17071533,  954.98529053,  609.60974121,  995.29168701,591.36584473,  955.49267578,608.80487061, 975.64581299],dtype=np.float32)).all():
+            #        pdb.set_trace()
             # Require non-zero seg area and more than 1x1 box size
             if obj_dict['area'] > 0 and x2 > x1 and y2 > y1:
                 obj_dict['clean_bbox'] = [x1, y1, x2, y2]
+                #obj_dict['clean_polyinter']=xy_inter
                 valid_objs.append(copy.deepcopy(obj_dict))
                 valid_segms.append(copy.deepcopy(obj_dict['segmentation']))
+                #pdb.set_trace()
         num_valid_objs = len(valid_objs)
 
         boxes = np.zeros((num_valid_objs, 4), dtype=entry['boxes'].dtype)
+        #polyinters=np.zeros((num_valid_objs, 28), dtype=entry['polyinters'].dtype)
         gt_classes = np.zeros((num_valid_objs), dtype=entry['gt_classes'].dtype)
         gt_overlaps = np.zeros(
             (num_valid_objs, self.num_classes),
@@ -260,6 +350,7 @@ class TxtDataset(object):
         for ix, obj in enumerate(valid_objs):
             cls = self.json_category_id_to_contiguous_id[obj['category_id']]
             boxes[ix, :] = obj['clean_bbox']
+            #polyinters[ix,:]=obj['clean_polyinter']
             gt_classes[ix] = cls
             seg_areas[ix] = obj['area']
             is_crowd[ix] = obj['iscrowd']
@@ -275,6 +366,8 @@ class TxtDataset(object):
             else:
                 gt_overlaps[ix, cls] = 1.0
         entry['boxes'] = np.append(entry['boxes'], boxes, axis=0)
+        #entry['polyinters']=np.append(entry['polyinters'],polyinters,axis=0)
+        #pdb.set_trace()
         entry['segms'].extend(valid_segms)
         # To match the original implementation:
         # entry['boxes'] = np.append(
@@ -373,6 +466,7 @@ class TxtDataset(object):
             gt_kps[1, i] = y[i]
             gt_kps[2, i] = v[i]
         return gt_kps
+
 def calcArea(points): 
     m1,m2,n1,n2,j1,j2,k1,k2 = \
         float(points[0]),float(points[1]),float(points[2]),float(points[3]),\
@@ -399,6 +493,7 @@ class JsonDataset(object):
     """A class representing a COCO json dataset."""
 
     def __init__(self, name):
+        pdb.set_trace()
         assert name in DATASETS.keys(), \
             'Unknown dataset name: {}'.format(name)
         assert os.path.exists(DATASETS[name][IM_DIR]), \
@@ -731,6 +826,10 @@ def _merge_proposal_boxes_into_roidb(roidb, box_list):
             boxes.astype(entry['boxes'].dtype, copy=False),
             axis=0
         )
+        #pdb.set_trace()
+        #entry['polyinters']=np.append(entry['polyinters'],
+        #    np.zeros((num_boxes,28), dtype=entry['polyinters'].dtype),axis=0
+        #    )
         entry['gt_classes'] = np.append(
             entry['gt_classes'],
             np.zeros((num_boxes), dtype=entry['gt_classes'].dtype)
@@ -802,3 +901,7 @@ def _sort_proposals(proposals, id_field):
     fields_to_sort = ['boxes', id_field, 'scores']
     for k in fields_to_sort:
         proposals[k] = [proposals[k][i] for i in order]
+
+
+
+
