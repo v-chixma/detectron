@@ -35,6 +35,7 @@ import utils.keypoints as keypoint_utils
 envu.set_up_matplotlib()
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+import pdb
 
 plt.rcParams['pdf.fonttype'] = 42  # For editing in Adobe Illustrator
 
@@ -297,18 +298,19 @@ def vis_one_image(
             plt.Rectangle((bbox[0], bbox[1]),
                           bbox[2] - bbox[0],
                           bbox[3] - bbox[1],
-                          fill=False, edgecolor='g',
+                          fill=False, edgecolor='r',
                           linewidth=0.5, alpha=box_alpha))
 
         if show_class:
             ax.text(
                 bbox[0], bbox[1] - 2,
                 get_class_string(classes[i], score, dataset),
-                fontsize=3,
+                fontsize=10,
                 family='serif',
                 bbox=dict(
                     facecolor='g', alpha=0.4, pad=0, edgecolor='none'),
                 color='white')
+        #pdb.set_trace()
 
         # show mask
         if segms is not None and len(segms) > i:

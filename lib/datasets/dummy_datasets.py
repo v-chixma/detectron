@@ -46,9 +46,9 @@ def get_coco_dataset():
     
     #classes for ODAI 
     classes = [
-        '__background__',\
-        'plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', \
-        'large-vehicle', 'ship', 'tennis-court','basketball-court', 'storage-tank',  \
+        '__background__',
+        'plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 
+        'large-vehicle', 'ship', 'tennis-court','basketball-court', 'storage-tank',  
         'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter'
         ]
     ds.classes = {i: name for i, name in enumerate(classes)}
