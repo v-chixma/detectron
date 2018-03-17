@@ -48,6 +48,14 @@ DATASETS = {
         NAMELIST:
             _DATA_DIR + '/train_split_cxma/name_list.txt'
     },
+    'odai_val': {
+        IM_DIR:
+            _DATA_DIR + '/val_split_cxma/images',
+        ANN_DIR:
+            _DATA_DIR + '/val_split_cxma/labelTxt',
+        NAMELIST:
+            _DATA_DIR + '/val_split_cxma/val.txt'
+    },
     'cityscapes_fine_instanceonly_seg_train': {
         IM_DIR:
             _DATA_DIR + '/cityscapes/images',

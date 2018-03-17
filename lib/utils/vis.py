@@ -36,6 +36,7 @@ envu.set_up_matplotlib()
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import pdb
+import math
 
 plt.rcParams['pdf.fonttype'] = 42  # For editing in Adobe Illustrator
 
@@ -386,6 +387,250 @@ def vis_one_image(
                     line, color=colors[len(kp_lines) + 1], linewidth=1.0,
                     alpha=0.7)
 
-    output_name = os.path.basename(im_name) + '.' + ext
+    output_name = os.path.basename(im_name) #+ '.' + ext
     fig.savefig(os.path.join(output_dir, '{}'.format(output_name)), dpi=dpi)
     plt.close('all')
+def vis_one_image_save_hbbox_result(
+        im, im_name, output_dir, boxes, result_files, segms=None, keypoints=None, thresh=0.9,
+        kp_thresh=2, dpi=200, box_alpha=0.0, dataset=None, show_class=False,
+        ext='pdf',tighten_by_mask=False):
+    """Visual debugging of detections."""
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    if isinstance(boxes, list):
+        boxes, segms, keypoints, classes = convert_from_cls_format(
+            boxes, segms, keypoints)
+
+    if boxes is None or boxes.shape[0] == 0 or max(boxes[:, 4]) < thresh:
+        return
+
+    dataset_keypoints, _ = keypoint_utils.get_keypoints()
+
+    if segms is not None:
+        masks = mask_util.decode(segms)
+
+    color_list = colormap(rgb=True) / 255
+
+    kp_lines = kp_connections(dataset_keypoints)
+    cmap = plt.get_cmap('rainbow')
+    colors = [cmap(i) for i in np.linspace(0, 1, len(kp_lines) + 2)]
+    # Display in largest to smallest order to reduce occlusion
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    sorted_inds = np.argsort(-areas)
+
+    mask_color_id = 0
+    for i in sorted_inds:
+        bbox = boxes[i, :4]
+        score = boxes[i, -1]
+        if score < thresh:
+            continue
+
+        #print(classes[i])
+        if not tighten_by_mask:
+            result_files[classes[i]].write('{:s} {:f} {:f} {:f} {:f} {:f}\n'.format(os.path.basename(im_name).split('.')[0],score,bbox[0],bbox[1],bbox[2]-bbox[0]+1,bbox[3]-bbox[1]+1))
+        else:
+            if segms is not None and len(segms) > i:
+                e = masks[:, :, i]
+
+                _, contour, hier = cv2.findContours(
+                    e.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+                #pdb.set_trace()
+                if len(contour)>1:
+                    contour = np.concatenate(contour)
+                c = np.array(contour).astype(np.float32).reshape(1,-1)
+                
+                x1 = np.min(c[0][0::2])
+                x2 = np.max(c[0][0::2])
+                y1 = np.min(c[0][1::2])
+                y2 = np.max(c[0][1::2])
+                #print(x1,y1,x2,y2)
+                #pdb.set_trace()
+                result_files[classes[i]].write('{:s} {:f} {:f} {:f} {:f} {:f}\n'.format(os.path.basename(im_name).split('.')[0],score,x1,y1,x2-x1+1,y2-y1+1))
+                
+
+        #pdb.set_trace()
+        # show keypoints
+        if keypoints is not None and len(keypoints) > i:
+            kps = keypoints[i]
+            plt.autoscale(False)
+            for l in range(len(kp_lines)):
+                i1 = kp_lines[l][0]
+                i2 = kp_lines[l][1]
+                if kps[2, i1] > kp_thresh and kps[2, i2] > kp_thresh:
+                    x = [kps[0, i1], kps[0, i2]]
+                    y = [kps[1, i1], kps[1, i2]]
+                    line = plt.plot(x, y)
+                    plt.setp(line, color=colors[l], linewidth=1.0, alpha=0.7)
+                if kps[2, i1] > kp_thresh:
+                    plt.plot(
+                        kps[0, i1], kps[1, i1], '.', color=colors[l],
+                        markersize=3.0, alpha=0.7)
+
+                if kps[2, i2] > kp_thresh:
+                    plt.plot(
+                        kps[0, i2], kps[1, i2], '.', color=colors[l],
+                        markersize=3.0, alpha=0.7)
+
+            # add mid shoulder / mid hip for better visualization
+            mid_shoulder = (
+                kps[:2, dataset_keypoints.index('right_shoulder')] +
+                kps[:2, dataset_keypoints.index('left_shoulder')]) / 2.0
+            sc_mid_shoulder = np.minimum(
+                kps[2, dataset_keypoints.index('right_shoulder')],
+                kps[2, dataset_keypoints.index('left_shoulder')])
+            mid_hip = (
+                kps[:2, dataset_keypoints.index('right_hip')] +
+                kps[:2, dataset_keypoints.index('left_hip')]) / 2.0
+            sc_mid_hip = np.minimum(
+                kps[2, dataset_keypoints.index('right_hip')],
+                kps[2, dataset_keypoints.index('left_hip')])
+            if (sc_mid_shoulder > kp_thresh and
+                    kps[2, dataset_keypoints.index('nose')] > kp_thresh):
+                x = [mid_shoulder[0], kps[0, dataset_keypoints.index('nose')]]
+                y = [mid_shoulder[1], kps[1, dataset_keypoints.index('nose')]]
+                line = plt.plot(x, y)
+                plt.setp(
+                    line, color=colors[len(kp_lines)], linewidth=1.0, alpha=0.7)
+            if sc_mid_shoulder > kp_thresh and sc_mid_hip > kp_thresh:
+                x = [mid_shoulder[0], mid_hip[0]]
+                y = [mid_shoulder[1], mid_hip[1]]
+                line = plt.plot(x, y)
+                plt.setp(
+                    line, color=colors[len(kp_lines) + 1], linewidth=1.0,
+                    alpha=0.7)
+def vis_one_image_save_obbox_result(
+        im, im_name, output_dir, boxes, result_files, segms=None, keypoints=None, thresh=0.9,
+        kp_thresh=2, dpi=200, box_alpha=0.0, dataset=None, show_class=False,
+        ext='pdf',tighten_by_mask=True):
+    """Visual debugging of detections."""
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    if isinstance(boxes, list):
+        boxes, segms, keypoints, classes = convert_from_cls_format(
+            boxes, segms, keypoints)
+
+    if boxes is None or boxes.shape[0] == 0 or max(boxes[:, 4]) < thresh:
+        return
+
+    dataset_keypoints, _ = keypoint_utils.get_keypoints()
+
+    if segms is not None:
+        masks = mask_util.decode(segms)
+
+    color_list = colormap(rgb=True) / 255
+
+    kp_lines = kp_connections(dataset_keypoints)
+    cmap = plt.get_cmap('rainbow')
+    colors = [cmap(i) for i in np.linspace(0, 1, len(kp_lines) + 2)]
+    # Display in largest to smallest order to reduce occlusion
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    sorted_inds = np.argsort(-areas)
+
+    mask_color_id = 0
+    for i in sorted_inds:
+        bbox = boxes[i, :4]
+        score = boxes[i, -1]
+        if score < thresh:
+            continue
+
+        #print(classes[i])
+        if not tighten_by_mask:
+            result_files[classes[i]].write('{:s} {:f} {:f} {:f} {:f} {:f}\n'.format(os.path.basename(im_name).split('.')[0],score,bbox[0],bbox[1],bbox[2]-bbox[0]+1,bbox[3]-bbox[1]+1))
+        else:
+            if segms is not None and len(segms) > i:
+                e = masks[:, :, i]
+
+                _, contour, hier = cv2.findContours(
+                    e.copy(), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+                #pdb.set_trace()
+                if len(contour)>1:
+                    contour = np.concatenate(contour)
+                c = np.array(contour).astype(np.float32).reshape(-1,2)
+                rect = cv2.minAreaRect(c)
+                x_ct,y_ct = rect[0]
+                w,h = rect[1]
+                angle = rect[2]
+                arg = angle*math.pi/180
+
+                #print(x_ct,y_ct,w,h,angle)
+                #pdb.set_trace()
+                if w == 0:
+                    continue
+                r = math.sqrt((w/2)**2+(h/2)**2)
+                arg1 = math.atan(h/w) - arg
+                arg2 = math.pi - math.atan(h/w) - arg
+                x1 = x_ct + r*math.cos(arg2)
+                y1 = y_ct - r*math.sin(arg2)
+                x2 = x_ct + r*math.cos(arg1)
+                y2 = y_ct - r*math.sin(arg1)
+                x3 = 2*x_ct - x1
+                y3 = 2*y_ct - y1
+                x4 = 2*x_ct - x2
+                y4 = 2*y_ct - y2
+
+
+
+                #box = np.int0(box)
+                #print(x1,y1,x2,y2)
+                #pdb.set_trace()
+                result_files[classes[i]].write('{:s} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n'.format(
+                                os.path.basename(im_name).split('.')[0],
+                                score,
+                                x1,y1,
+                                x2,y2,
+                                x3,y3,
+                                x4,y4,))
+                
+
+        #pdb.set_trace()
+        # show keypoints
+        if keypoints is not None and len(keypoints) > i:
+            kps = keypoints[i]
+            plt.autoscale(False)
+            for l in range(len(kp_lines)):
+                i1 = kp_lines[l][0]
+                i2 = kp_lines[l][1]
+                if kps[2, i1] > kp_thresh and kps[2, i2] > kp_thresh:
+                    x = [kps[0, i1], kps[0, i2]]
+                    y = [kps[1, i1], kps[1, i2]]
+                    line = plt.plot(x, y)
+                    plt.setp(line, color=colors[l], linewidth=1.0, alpha=0.7)
+                if kps[2, i1] > kp_thresh:
+                    plt.plot(
+                        kps[0, i1], kps[1, i1], '.', color=colors[l],
+                        markersize=3.0, alpha=0.7)
+
+                if kps[2, i2] > kp_thresh:
+                    plt.plot(
+                        kps[0, i2], kps[1, i2], '.', color=colors[l],
+                        markersize=3.0, alpha=0.7)
+
+            # add mid shoulder / mid hip for better visualization
+            mid_shoulder = (
+                kps[:2, dataset_keypoints.index('right_shoulder')] +
+                kps[:2, dataset_keypoints.index('left_shoulder')]) / 2.0
+            sc_mid_shoulder = np.minimum(
+                kps[2, dataset_keypoints.index('right_shoulder')],
+                kps[2, dataset_keypoints.index('left_shoulder')])
+            mid_hip = (
+                kps[:2, dataset_keypoints.index('right_hip')] +
+                kps[:2, dataset_keypoints.index('left_hip')]) / 2.0
+            sc_mid_hip = np.minimum(
+                kps[2, dataset_keypoints.index('right_hip')],
+                kps[2, dataset_keypoints.index('left_hip')])
+            if (sc_mid_shoulder > kp_thresh and
+                    kps[2, dataset_keypoints.index('nose')] > kp_thresh):
+                x = [mid_shoulder[0], kps[0, dataset_keypoints.index('nose')]]
+                y = [mid_shoulder[1], kps[1, dataset_keypoints.index('nose')]]
+                line = plt.plot(x, y)
+                plt.setp(
+                    line, color=colors[len(kp_lines)], linewidth=1.0, alpha=0.7)
+            if sc_mid_shoulder > kp_thresh and sc_mid_hip > kp_thresh:
+                x = [mid_shoulder[0], mid_hip[0]]
+                y = [mid_shoulder[1], mid_hip[1]]
+                line = plt.plot(x, y)
+                plt.setp(
+                    line, color=colors[len(kp_lines) + 1], linewidth=1.0,
+                    alpha=0.7)

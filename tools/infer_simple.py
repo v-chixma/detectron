@@ -44,6 +44,7 @@ import datasets.dummy_datasets as dummy_datasets
 import utils.c2 as c2_utils
 import utils.logging
 import utils.vis as vis_utils
+import pdb
 
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
@@ -71,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/tmp/infer_simple',
+        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/odai_val_results_obbox_mask_tight_split',
         type=str
     )
     parser.add_argument(
@@ -80,6 +81,13 @@ def parse_args():
         help='image file name extension (default: jpg)',
         default='jpg',
         type=str
+    )
+    parser.add_argument(
+        '--gpu',
+        dest='gpu',
+        help='gpu No. for build inference model (/path/to/model_config.yaml)',
+        default=0,
+        type=int
     )
     parser.add_argument(
         'im_or_folder', help='image or folder of images', default=None
@@ -96,7 +104,7 @@ def main(args):
     cfg.TEST.WEIGHTS = args.weights
     cfg.NUM_GPUS = 1
     assert_and_infer_cfg()
-    model = infer_engine.initialize_model_from_cfg()
+    model = infer_engine.initialize_model_from_cfg(args.gpu)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     if os.path.isdir(args.im_or_folder):
@@ -106,13 +114,13 @@ def main(args):
 
     for i, im_name in enumerate(im_list):
         out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.pdf')
+            args.output_dir, '{}'.format(os.path.basename(im_name) + '.jpg')
         )
         logger.info('Processing {} -> {}'.format(im_name, out_name))
         im = cv2.imread(im_name)
         timers = defaultdict(Timer)
         t = time.time()
-        with c2_utils.NamedCudaScope(0):
+        with c2_utils.NamedCudaScope(args.gpu):
             cls_boxes, cls_segms, cls_keyps = infer_engine.im_detect_all(
                 model, im, None, timers=timers
             )
@@ -125,6 +133,7 @@ def main(args):
                 'rest (caches and auto-tuning need to warm up)'
             )
 
+        '''
         vis_utils.vis_one_image(
             im[:, :, ::-1],  # BGR -> RGB for visualization
             im_name,
@@ -136,8 +145,51 @@ def main(args):
             box_alpha=0.3,
             show_class=True,
             thresh=0.7,
-            kp_thresh=2
+            kp_thresh=2,
+            ext='jpg'
         )
+        '''
+        #pdb.set_trace()
+        #create 15 files for all 15 classes 
+        if not os.path.isdir(args.output_dir):
+            os.makedirs(args.output_dir)
+
+        result_files = [open(os.path.join(args.output_dir,'Task1_{:s}.txt'.format(v)),'a') 
+                            for k,v in dummy_coco_dataset.classes.items()]
+        
+        #vis_utils.vis_one_image_save_hbbox_result(
+        #    im[:, :, ::-1],  # BGR -> RGB for visualization
+        #    im_name,
+        #    args.output_dir,
+        #    cls_boxes,
+        #    result_files,
+        #    cls_segms,
+        #    cls_keyps,
+        #    dataset=dummy_coco_dataset,
+        #    box_alpha=0.3,
+        #    show_class=True,
+        #    thresh=0.7,
+        #    kp_thresh=2,
+        #    ext='jpg',
+        #    tighten_by_mask=False
+        #)
+        vis_utils.vis_one_image_save_obbox_result(
+            im[:, :, ::-1],  # BGR -> RGB for visualization
+            im_name,
+            args.output_dir,
+            cls_boxes,
+            result_files,
+            cls_segms,
+            cls_keyps,
+            dataset=dummy_coco_dataset,
+            box_alpha=0.3,
+            show_class=True,
+            thresh=0.7,
+            kp_thresh=2,
+            ext='jpg',
+            tighten_by_mask=True
+        )
+        
 
 
 if __name__ == '__main__':

@@ -4,7 +4,7 @@ MODEL:
   NUM_CLASSES: 16
   FASTER_RCNN: True
 NUM_GPUS: 1
-OUTPUT_DIR: /home/yxzh/mount_31/cxma/software/detectron/tmp
+#OUTPUT_DIR: /home/yxzh/mount_31/cxma/software/detectron/tmp
 SOLVER:
   WEIGHT_DECAY: 0.0001
   LR_POLICY: steps_with_decay
