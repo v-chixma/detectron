@@ -37,3 +37,5 @@ cache/*
 1
 configs/12_2017_baselines/.nfs*
 tools/.nfs*
+.nfs*
+lib/datasets/.nfs*
