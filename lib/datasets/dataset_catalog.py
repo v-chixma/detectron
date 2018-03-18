@@ -46,7 +46,7 @@ DATASETS = {
         ANN_DIR:
             _DATA_DIR + '/train_split_cxma/labelTxt',
         NAMELIST:
-            _DATA_DIR + '/train_split_cxma/name_list.txt'
+            _DATA_DIR + '/train_split_cxma/train.txt'
     },
     'odai_val': {
         IM_DIR:
