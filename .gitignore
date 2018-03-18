@@ -35,3 +35,5 @@ lib/core/.nfs00000000051e2c9900000596
 log/*
 cache/*
 1
+configs/12_2017_baselines/.nfs*
+tools/.nfs*

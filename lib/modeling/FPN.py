@@ -46,7 +46,13 @@ def add_fpn_ResNet50_conv5_body(model):
     return add_fpn_onto_conv_body(
         model, ResNet.add_ResNet50_conv5_body, fpn_level_info_ResNet50_conv5
     )
+#aug for augment, by PANet, add bottom-up path on FPN
+def add_aug_fpn_ResNet50_conv5_body(model):
+    blob_conv, dim_conv, spatial_scale_conv = add_aug_fpn_onto_conv_body(
+        model, ResNet.add_ResNet50_conv5_body, fpn_level_info_ResNet50_conv5
+    )
 
+    return blob_conv, dim_conv, spatial_scale_conv
 
 def add_fpn_ResNet50_conv5_P2only_body(model):
     return add_fpn_onto_conv_body(
@@ -111,7 +117,28 @@ def add_fpn_onto_conv_body(
     else:
         # use all levels
         return blobs_fpn, dim_fpn, spatial_scales_fpn
+        
+def add_aug_fpn_onto_conv_body(
+    model, conv_body_func, fpn_level_info_func, P2only=False
+):
+    """Add the specified conv body to the model and then add FPN levels to it, 
+       finally add bottom-up path onto FPN levels
+    """
+    # Note: blobs_conv is in revsersed order: [fpn5, fpn4, fpn3, fpn2]
+    # similarly for dims_conv: [2048, 1024, 512, 256]
+    # similarly for spatial_scales_fpn: [1/32, 1/16, 1/8, 1/4]
 
+    conv_body_func(model)
+    blobs_fpn, dim_fpn, spatial_scales_fpn = add_fpn(
+        model, fpn_level_info_func()
+    )
+
+    if P2only:
+        # use only the finest level
+        return blobs_fpn[-1], dim_fpn, spatial_scales_fpn[-1]
+    else:
+        # use all levels
+        return blobs_fpn, dim_fpn, spatial_scales_fpn
 
 def add_fpn(model, fpn_level_info):
     """Add FPN connections based on the model described in the FPN paper."""
