@@ -86,6 +86,8 @@ class TxtDataset(object):
         categories = self.cls_names[1:]
 
         self.category_to_id_map = dict(zip(categories, category_ids))
+        #print(self.category_to_id_map)
+        #pdb.set_trace()
         self.classes = ['__background__'] + categories
         self.num_classes = len(self.classes)
         self.json_category_id_to_contiguous_id = {

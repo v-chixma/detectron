@@ -251,7 +251,7 @@ def _add_fast_rcnn_head(
 ):
     """Add a Fast R-CNN head to the model."""
     blob_frcn, dim_frcn = add_roi_box_head_func(
-        model, blob_in, dim_in, spatial_scale_in
+        model, blob_in, dim_in, spatial_scale_in, multilevel_fusion = True
     )
     fast_rcnn_heads.add_fast_rcnn_outputs(model, blob_frcn, dim_frcn)
     if model.train:
@@ -268,13 +268,20 @@ def _add_roi_mask_head(
     # Capture model graph before adding the mask head
     bbox_net = copy.deepcopy(model.net.Proto())
     # Add the mask head
-    blob_mask_head, dim_mask_head = add_roi_mask_head_func(
+    blob_mask_heads, dim_mask_head = add_roi_mask_head_func(
         model, blob_in, dim_in, spatial_scale_in
     )
     # Add the mask output
-    blob_mask = mask_rcnn_heads.add_mask_rcnn_outputs(
-        model, blob_mask_head, dim_mask_head
-    )
+    if len(c2_utils.BlobReferenceList(blob_mask_heads)) == 1:
+        blob_mask = mask_rcnn_heads.add_mask_rcnn_outputs(
+            model, blob_mask_heads, dim_mask_head
+        )
+    elif len(c2_utils.BlobReferenceList(blob_mask_heads)) == 2:
+        blob_mask = mask_rcnn_heads.add_mask_rcnn_outputs_fcn_plus_fc(
+            model, blob_mask_heads, dim_mask_head
+        )
+    else:
+        raise 
 
     if not model.train:  # == inference
         # Inference uses a cascade of box predictions, then mask predictions.

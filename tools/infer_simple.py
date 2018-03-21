@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/odai_val_results_obbox_mask_tight_split',
+        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/odai_val_results_obbox_mask_bottomup_an8',
         type=str
     )
     parser.add_argument(

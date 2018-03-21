@@ -27,9 +27,11 @@ from core.config import cfg
 from modeling.generate_anchors import generate_anchors
 from utils.c2 import const_fill
 from utils.c2 import gauss_fill
+import utils.c2 as c2
 import modeling.ResNet as ResNet
 import utils.blob as blob_utils
 import utils.boxes as box_utils
+import pdb
 
 # Lowest and highest pyramid levels in the backbone network. For FPN, we assume
 # that all networks have 5 spatial reductions, each by a factor of 2. Level 1
@@ -132,14 +134,56 @@ def add_aug_fpn_onto_conv_body(
     blobs_fpn, dim_fpn, spatial_scales_fpn = add_fpn(
         model, fpn_level_info_func()
     )
-
+    blobs_fpn_aug, dim_fpn = add_bottom_up_path_onto_fpn(model,blobs_fpn,dim_fpn)
     if P2only:
         # use only the finest level
-        return blobs_fpn[-1], dim_fpn, spatial_scales_fpn[-1]
+        return blobs_fpn_aug[-1], dim_fpn, spatial_scales_fpn[-1]
     else:
         # use all levels
-        return blobs_fpn, dim_fpn, spatial_scales_fpn
+        return blobs_fpn_aug, dim_fpn, spatial_scales_fpn
 
+def add_bottom_up_path_onto_fpn(model,blobs_fpn,dim_fpn):
+    num_fpn_feat = len(blobs_fpn)
+    aug_fpn_blobs = []
+    #print(blobs_fpn)
+    #print(aug_fpn_blobs)
+    xavier_fill = ('XavierFill', {})
+    for i in range(num_fpn_feat):
+        if i == 0:
+            p = model.AffineChannel(blobs_fpn[-1], c2.UnscopeName(str(blobs_fpn[-1]))+'_aug', dim=dim_fpn, inplace=True)
+            aug_fpn_blobs.insert(0,p)
+            #pdb.set_trace()
+            continue
+        p = model.Conv(
+                p,
+                c2.UnscopeName(str(aug_fpn_blobs[-i]))+'downsample',
+                dim_in=dim_fpn,
+                dim_out=dim_fpn,
+                kernel=3,
+                pad=1,
+                stride=2,
+                weight_init=xavier_fill,
+                bias_init=const_fill(0.0)
+            )
+        p = model.Relu(p, p)
+        p = model.net.Sum([blobs_fpn[-(i+1)], p], c2.UnscopeName(str(blobs_fpn[-(i+1)]))+'_aug_inner')
+        p = model.Conv(
+                p,
+                c2.UnscopeName(str(blobs_fpn[-(i+1)]))+'_aug',
+                dim_in=dim_fpn,
+                dim_out=dim_fpn,
+                kernel=3,
+                pad=1,
+                stride=1,
+                weight_init=('XavierFill',{}),
+                bias_init=const_fill(0.0)
+            )
+        p = model.Relu(p, p)
+        aug_fpn_blobs.insert(0,p)
+    #print(aug_fpn_blobs)
+    #pdb.set_trace()
+    return aug_fpn_blobs,dim_fpn
+    
 def add_fpn(model, fpn_level_info):
     """Add FPN connections based on the model described in the FPN paper."""
     # FPN levels are built starting from the highest/coarest level of the

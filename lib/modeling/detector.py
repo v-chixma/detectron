@@ -242,6 +242,121 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         method='RoIPoolF',
         resolution=7,
         spatial_scale=1. / 16.,
+        sampling_ratio=0,
+        multilevel_fusion = False
+    ):
+        """Add the specified RoI pooling method. The sampling_ratio argument
+        is supported for some, but not all, RoI transform methods.
+
+        RoIFeatureTransform abstracts away:
+          - Use of FPN or not
+          - Specifics of the transform method
+        """
+        if multilevel_fusion == False: 
+            assert method in {'RoIPoolF', 'RoIAlign'}, \
+                'Unknown pooling method: {}'.format(method)
+            has_argmax = (method == 'RoIPoolF')
+            if isinstance(blobs_in, list):
+                # FPN case: add RoIFeatureTransform to each FPN level
+                k_max = cfg.FPN.ROI_MAX_LEVEL  # coarsest level of pyramid
+                k_min = cfg.FPN.ROI_MIN_LEVEL  # finest level of pyramid
+                assert len(blobs_in) == k_max - k_min + 1
+                bl_out_list = []
+                for lvl in range(k_min, k_max + 1):
+                    bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
+                    sc = spatial_scale[k_max - lvl]  # in reversed order
+                    #bl_rois = blob_rois + '_fpn' + str(lvl)
+                    bl_rois = blob_rois
+                    bl_out = blob_out + '_fpn' + str(lvl)
+                    bl_out_list.append(bl_out)
+                    bl_argmax = ['_argmax_' + bl_out] if has_argmax else []
+                    self.net.__getattr__(method)(
+                        [bl_in, bl_rois], [bl_out] + bl_argmax,
+                        pooled_w=resolution,
+                        pooled_h=resolution,
+                        spatial_scale=sc,
+                        sampling_ratio=sampling_ratio
+                    )
+                # The pooled features from all levels are concatenated along the
+                # batch dimension into a single 4D tensor.
+                xform_shuffled, _ = self.net.Concat(
+                    bl_out_list, [blob_out + '_shuffled', '_concat_' + blob_out],
+                    axis=0
+                )
+                # Unshuffle to match rois from dataloader
+                restore_bl = blob_rois + '_idx_restore_int32'
+                xform_out = self.net.BatchPermutation(
+                    [xform_shuffled, restore_bl], blob_out
+                )
+            else:
+                # Single feature level
+                bl_argmax = ['_argmax_' + blob_out] if has_argmax else []
+                # sampling_ratio is ignored for RoIPoolF
+                xform_out = self.net.__getattr__(method)(
+                    [blobs_in, blob_rois], [blob_out] + bl_argmax,
+                    pooled_w=resolution,
+                    pooled_h=resolution,
+                    spatial_scale=spatial_scale,
+                    sampling_ratio=sampling_ratio
+                )
+            # Only return the first blob (the transformed features)
+            return xform_out
+    
+        if multilevel_fusion == True:
+            assert method in {'RoIPoolF', 'RoIAlign'}, \
+                'Unknown pooling method: {}'.format(method)
+            has_argmax = (method == 'RoIPoolF')
+            if isinstance(blobs_in, list):
+                # FPN case: add RoIFeatureTransform to each FPN level
+                k_max = cfg.FPN.ROI_MAX_LEVEL  # coarsest level of pyramid
+                k_min = cfg.FPN.ROI_MIN_LEVEL  # finest level of pyramid
+                assert len(blobs_in) == k_max - k_min + 1
+                bl_out_list = []
+                for lvl in range(k_min, k_max + 1):
+                    bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
+                    sc = spatial_scale[k_max - lvl]  # in reversed order
+                    bl_rois = blob_rois + '_fpn' + str(lvl)
+                    bl_out = blob_out + '_fpn' + str(lvl)
+                    bl_out_list.append(bl_out)
+                    bl_argmax = ['_argmax_' + bl_out] if has_argmax else []
+                    self.net.__getattr__(method)(
+                        [bl_in, bl_rois], [bl_out] + bl_argmax,
+                        pooled_w=resolution,
+                        pooled_h=resolution,
+                        spatial_scale=sc,
+                        sampling_ratio=sampling_ratio
+                    )
+                # The pooled features from all levels are concatenated along the
+                # batch dimension into a single 4D tensor.
+                xform_all_level_concat, _ = self.net.Concat(
+                    bl_out_list, [blob_out + '_all_level_concat', '_concat_' + blob_out],
+                    axis=0
+                )
+                
+            else:
+                # Single feature level
+                bl_argmax = ['_argmax_' + blob_out] if has_argmax else []
+                # sampling_ratio is ignored for RoIPoolF
+                xform_out = self.net.__getattr__(method)(
+                    [blobs_in, blob_rois], [blob_out] + bl_argmax,
+                    pooled_w=resolution,
+                    pooled_h=resolution,
+                    spatial_scale=spatial_scale,
+                    sampling_ratio=sampling_ratio
+                )
+                xform_all_level_concat = xform_out
+            # Only return the first blob (the transformed features)
+            return xform_all_level_concat
+
+    '''
+    def RoIFeatureTransform(
+        self,
+        blobs_in,
+        blob_out,
+        blob_rois='rois',
+        method='RoIPoolF',
+        resolution=7,
+        spatial_scale=1. / 16.,
         sampling_ratio=0
     ):
         """Add the specified RoI pooling method. The sampling_ratio argument
@@ -298,7 +413,7 @@ class DetectionModelHelper(cnn.CNNModelHelper):
             )
         # Only return the first blob (the transformed features)
         return xform_out
-
+    '''
     def ConvShared(
         self,
         blob_in,

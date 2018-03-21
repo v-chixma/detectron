@@ -37,6 +37,7 @@ from utils.c2 import const_fill
 from utils.c2 import gauss_fill
 import modeling.ResNet as ResNet
 import utils.blob as blob_utils
+import pdb
 
 
 # ---------------------------------------------------------------------------- #
@@ -52,7 +53,7 @@ def add_mask_rcnn_outputs(model, blob_in, dim):
         # name)
         blob_out = model.FC(
             blob_in,
-            'mask_fcn_logits',
+            'mask_fcn_logits_odai',
             dim,
             num_cls * cfg.MRCNN.RESOLUTION**2,
             weight_init=gauss_fill(0.001),
@@ -69,7 +70,7 @@ def add_mask_rcnn_outputs(model, blob_in, dim):
         )
         blob_out = model.Conv(
             blob_in,
-            'mask_fcn_logits',
+            'mask_fcn_logits_odai',
             dim,
             num_cls,
             kernel=1,
@@ -81,7 +82,7 @@ def add_mask_rcnn_outputs(model, blob_in, dim):
 
         if cfg.MRCNN.UPSAMPLE_RATIO > 1:
             blob_out = model.BilinearInterpolation(
-                'mask_fcn_logits', 'mask_fcn_logits_up', num_cls, num_cls,
+                'mask_fcn_logits_odai', 'mask_fcn_logits_up_odai', num_cls, num_cls,
                 cfg.MRCNN.UPSAMPLE_RATIO
             )
 
@@ -90,6 +91,53 @@ def add_mask_rcnn_outputs(model, blob_in, dim):
 
     return blob_out
 
+def add_mask_rcnn_outputs_fcn_plus_fc(model, blob_in, dim):
+    """Add Mask R-CNN specific outputs: either mask logits or probs."""
+    assert len(blob_in) == 2
+    num_cls = cfg.MODEL.NUM_CLASSES if cfg.MRCNN.CLS_SPECIFIC_MASK else 1
+
+    if cfg.MRCNN.USE_FC_OUTPUT:
+        # Predict masks with a fully connected layer (ignore 'fcn' in the blob
+        # name)
+        blob_out = model.FC(
+            blob_in[0],
+            'mask_fcn_logits_odai',
+            dim,
+            num_cls * cfg.MRCNN.RESOLUTION**2,
+            weight_init=gauss_fill(0.001),
+            bias_init=const_fill(0.0)
+        )
+    else:
+        # Predict mask using Conv
+
+        # Use GaussianFill for class-agnostic mask prediction; fills based on
+        # fan-in can be too large in this case and cause divergence
+        fill = (
+            cfg.MRCNN.CONV_INIT
+            if cfg.MRCNN.CLS_SPECIFIC_MASK else 'GaussianFill'
+        )
+        blob_out = model.Conv(
+            blob_in[0],
+            'mask_fcn_logits_odai',
+            dim,
+            num_cls,
+            kernel=1,
+            pad=0,
+            stride=1,
+            weight_init=(fill, {'std': 0.001}),
+            bias_init=const_fill(0.0)
+        )
+
+        if cfg.MRCNN.UPSAMPLE_RATIO > 1:
+            blob_out = model.BilinearInterpolation(
+                'mask_fcn_logits_odai', 'mask_fcn_logits_up_odai', num_cls, num_cls,
+                cfg.MRCNN.UPSAMPLE_RATIO
+            )
+
+    blob_out = model.net.Sum([blob_out,blob_in[1]],'fcn_plus_fc_mask')
+    if not model.train:  # == if test
+        blob_out = model.net.Sigmoid(blob_out, 'mask_fcn_probs')
+    return blob_out
 
 def add_mask_rcnn_losses(model, blob_mask):
     """Add Mask R-CNN specific losses."""
@@ -112,6 +160,11 @@ def mask_rcnn_fcn_head_v1up4convs(model, blob_in, dim_in, spatial_scale):
     return mask_rcnn_fcn_head_v1upXconvs(
         model, blob_in, dim_in, spatial_scale, 4
     )
+def mask_rcnn_fcn_plus_fc_head_v1up4convs(model, blob_in, dim_in, spatial_scale, multilevel_fusion = True):
+    """v1up design: 4 * (conv 3x3), convT 2x2."""
+    return mask_rcnn_fcn_plus_fc_head_v1upXconvs(
+        model, blob_in, dim_in, spatial_scale, 4, multilevel_fusion = multilevel_fusion
+    )
 
 
 def mask_rcnn_fcn_head_v1up(model, blob_in, dim_in, spatial_scale):
@@ -120,6 +173,102 @@ def mask_rcnn_fcn_head_v1up(model, blob_in, dim_in, spatial_scale):
         model, blob_in, dim_in, spatial_scale, 2
     )
 
+
+def mask_rcnn_fcn_plus_fc_head_v1upXconvs(
+    model, blob_in, dim_in, spatial_scale, num_convs, multilevel_fusion = True
+):
+    """v1upXconvs design: X * (conv 3x3), convT 2x2."""
+    current = model.RoIFeatureTransform(
+        blob_in,
+        blob_out='_[mask]_roi_feat',
+        blob_rois='mask_rois',
+        method=cfg.MRCNN.ROI_XFORM_METHOD,
+        resolution=cfg.MRCNN.ROI_XFORM_RESOLUTION,
+        sampling_ratio=cfg.MRCNN.ROI_XFORM_SAMPLING_RATIO,
+        spatial_scale=spatial_scale,
+        multilevel_fusion = multilevel_fusion
+    )
+
+    dilation = cfg.MRCNN.DILATION
+    dim_inner = cfg.MRCNN.DIM_REDUCED
+
+    for i in range(num_convs):
+        current = model.Conv(
+            current,
+            '_[mask]_fcn' + str(i + 1),
+            dim_in,
+            dim_inner,
+            kernel=3,
+            pad=1 * dilation,
+            stride=1,
+            weight_init=(cfg.MRCNN.CONV_INIT, {'std': 0.001}),
+            bias_init=('ConstantFill', {'value': 0.})
+        )
+        current = model.Relu(current, current)
+        dim_in = dim_inner
+        if multilevel_fusion == True and i == 1 :
+            assert cfg.FPN.ROI_MAX_LEVEL - cfg.FPN.ROI_MIN_LEVEL + 1 == 4 
+            model.net.Split(current,['_[mask]_split1','_[mask]_split2','_[mask]_split3','_[mask]_split4'],axis=0)
+            #tmp, _ = model.net.Concat(['_[mask]_split1','_[mask]_split2','_[mask]_split3','_[mask]_split4'],['con','c'],axis=0)
+            #current = model.net.Max(['_[mask]_split1',tmp],'_[mask]_split')
+            current = model.net.Max(['_[mask]_split1','_[mask]_split2','_[mask]_split3','_[mask]_split4'],'_[mask]_split')
+            #print(current)
+            #pdb.set_trace()
+        
+        if i == 2:
+            #add fc prediction branch after _[mask]_fcn3 for feature fusion
+            fc_branch = model.Conv(
+                current,
+                '_[mask]_conv4_fc',
+                dim_in,
+                dim_inner,
+                kernel=3,
+                pad=1*dilation,
+                weight_init=(cfg.MRCNN.CONV_INIT,{'std': 0.001}),
+                bias_init=('ConstantFill',{'value':0.})
+            )
+            fc_branch = model.Relu(fc_branch,fc_branch)
+            fc_branch = model.Conv(
+                fc_branch,
+                '_[mask]_conv5_fc',
+                dim_in,
+                dim_inner//2,
+                kernel=3,
+                pad=1*dilation,
+                weight_init=(cfg.MRCNN.CONV_INIT,{'std': 0.001}),
+                bias_init=('ConstantFill',{'value':0.})
+            )
+            fc_branch = model.Relu(fc_branch,fc_branch)
+            fc_branch = model.FC(
+                fc_branch,
+                'fc',
+                dim_inner//2,
+                cfg.MRCNN.RESOLUTION**2,
+                weight_init=gauss_fill(0.001),
+                bias_init=('ConstantFill',{'value':0.})
+            )
+            fc_branch, _ = model.net.Reshape(fc_branch,['fc_resized','oldshape'],
+                                                shape=[0,1,cfg.MRCNN.RESOLUTION,cfg.MRCNN.RESOLUTION])
+            fc_branch = model.net.Tile(fc_branch,'fc_tiled',tiles=cfg.MODEL.NUM_CLASSES,axis=1)
+            
+    # upsample layer
+    model.ConvTranspose(
+        current,
+        'conv5_mask',
+        dim_inner,
+        dim_inner,
+        kernel=2,
+        pad=0,
+        stride=2,
+        weight_init=(cfg.MRCNN.CONV_INIT, {'std': 0.001}),
+        bias_init=const_fill(0.0)
+    )
+    blob_mask = model.Relu('conv5_mask', 'conv5_mask')
+    
+    
+    #fcn_plus_fc_mask = model.net.Sum([blob_mask,fc_branch],'fcn_plus_fc_mask')
+
+    return [blob_mask, fc_branch], dim_inner
 
 def mask_rcnn_fcn_head_v1upXconvs(
     model, blob_in, dim_in, spatial_scale, num_convs
