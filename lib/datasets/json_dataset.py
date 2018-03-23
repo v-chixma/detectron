@@ -25,7 +25,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-
+import random
 import shapely.geometry
 from shapely.geometry import Polygon
 from shapely.geometry import LinearRing
@@ -157,6 +157,33 @@ class TxtDataset(object):
                 format(self.debug_timer.toc(average=False))
             )
         _add_class_assignments(roidb)
+
+        #class balance 
+        samples=np.zeros(cfg.MODEL.NUM_CLASSES-1).astype(np.int32)
+        roi_lt=[[] for i in range(cfg.MODEL.NUM_CLASSES-1)]
+
+        for roidb_one in roidb:
+            num_one=np.zeros(cfg.MODEL.NUM_CLASSES-1).astype(np.int32)
+            sample_one=np.zeros(cfg.MODEL.NUM_CLASSES-1).astype(np.int32)
+            for i in range(cfg.MODEL.NUM_CLASSES-1):
+                num_one[i]=np.sum(((roidb_one['gt_classes']==i+1)&(roidb_one['is_crowd']==0)).astype(np.int32))
+            #sample_one[i]
+            if (num_one==0).all():
+                continue
+            sample_one[num_one.argmax()]=1
+            roi_lt[num_one.argmax()].append(roidb_one)
+            #sample_one[num_one/float(len(num_one))>0.3]=1
+            samples+=sample_one
+        
+        max_num=np.max(samples)
+        
+        #
+        for i in range(cfg.MODEL.NUM_CLASSES-1):
+            for j in range(int(np.round((max_num-samples[i])/float(len(roi_lt[i]))))):
+                roidb+=roi_lt[i]
+        random.shuffle(roidb)
+        #print(max_num)
+        #pdb.set_trace()
         return roidb
 
     def _prep_roidb_entry(self, entry):
@@ -220,7 +247,8 @@ class TxtDataset(object):
             assert len(obj) == 10, "There is an error in the annotation file: {}".format(entry['ann_path'])
             obj_dict = {}
             obj_dict['category_id'] = self.category_to_id_map[obj[8]]
-            obj_dict['difficult'] = 0 if obj[9] == '0' else 1 # 1 for difficult; 0 for not difficult
+            assert (int(obj[9]) in [0,1,2])
+            obj_dict['difficult'] = int(obj[9]) #0 if obj[9] == '0' else 1 # 2 for outer box when split; 1 for difficult; 0 for not difficult
             obj_dict['iscrowd'] = 0 # this attribute is from coco, set it to be 0 for default
             obj_dict['segmentation'] = [[int(float(i)) for i in obj[:8]]]
             obj_dict['area'] = calcArea(obj_dict['segmentation'][0])
@@ -228,6 +256,8 @@ class TxtDataset(object):
                 continue
             #if obj_dict['difficult'] == 1 and cfg.TRAIN.SKIP_DIFFICULT_OBJ:
             #    continue
+            if obj_dict['difficult'] == 2:
+                continue
             if 'ignore' in obj_dict and obj_dict['ignore'] == 1:
                 continue
             plg = Polygon([(obj_dict['segmentation'][0][0],obj_dict['segmentation'][0][1]),\

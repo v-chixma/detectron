@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/odai_val_results_obbox_mask_bottomup_an8',
+        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/debug_infer_minrect_iter6',
         type=str
     )
     parser.add_argument(
@@ -114,7 +114,7 @@ def main(args):
 
     for i, im_name in enumerate(im_list):
         out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.jpg')
+            args.output_dir, '{}'.format(os.path.basename(im_name))
         )
         logger.info('Processing {} -> {}'.format(im_name, out_name))
         im = cv2.imread(im_name)

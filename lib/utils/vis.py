@@ -549,6 +549,17 @@ def vis_one_image_save_obbox_result(
                     contour = np.concatenate(contour)
                 c = np.array(contour).astype(np.float32).reshape(-1,2)
                 rect = cv2.minAreaRect(c)
+                box = cv2.boxPoints(rect)
+                #print(box)
+                #pdb.set_trace()
+                result_files[classes[i]].write('{:s} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f} {:f}\n'.format(
+                                os.path.basename(im_name).split('.')[0],
+                                score,
+                                box[0,0],box[0,1],
+                                box[1,0],box[1,1],
+                                box[2,0],box[2,1],
+                                box[3,0],box[3,1]))
+                '''
                 x_ct,y_ct = rect[0]
                 w,h = rect[1]
                 angle = rect[2]
@@ -571,7 +582,7 @@ def vis_one_image_save_obbox_result(
                 y4 = 2*y_ct - y2
 
 
-
+                
                 #box = np.int0(box)
                 #print(x1,y1,x2,y2)
                 #pdb.set_trace()
@@ -582,6 +593,7 @@ def vis_one_image_save_obbox_result(
                                 x2,y2,
                                 x3,y3,
                                 x4,y4,))
+                '''
                 
 
         #pdb.set_trace()

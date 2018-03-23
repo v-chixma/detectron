@@ -265,8 +265,8 @@ class DetectionModelHelper(cnn.CNNModelHelper):
                 for lvl in range(k_min, k_max + 1):
                     bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
                     sc = spatial_scale[k_max - lvl]  # in reversed order
-                    #bl_rois = blob_rois + '_fpn' + str(lvl)
-                    bl_rois = blob_rois
+                    bl_rois = blob_rois + '_fpn' + str(lvl)
+                    #bl_rois = blob_rois
                     bl_out = blob_out + '_fpn' + str(lvl)
                     bl_out_list.append(bl_out)
                     bl_argmax = ['_argmax_' + bl_out] if has_argmax else []
@@ -315,7 +315,8 @@ class DetectionModelHelper(cnn.CNNModelHelper):
                 for lvl in range(k_min, k_max + 1):
                     bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
                     sc = spatial_scale[k_max - lvl]  # in reversed order
-                    bl_rois = blob_rois + '_fpn' + str(lvl)
+                    #bl_rois = blob_rois + '_fpn' + str(lvl)
+                    bl_rois = blob_rois
                     bl_out = blob_out + '_fpn' + str(lvl)
                     bl_out_list.append(bl_out)
                     bl_argmax = ['_argmax_' + bl_out] if has_argmax else []

@@ -206,7 +206,7 @@ def mask_rcnn_fcn_plus_fc_head_v1upXconvs(
         )
         current = model.Relu(current, current)
         dim_in = dim_inner
-        if multilevel_fusion == True and i == 1 :
+        if multilevel_fusion == True and i == 0 :
             assert cfg.FPN.ROI_MAX_LEVEL - cfg.FPN.ROI_MIN_LEVEL + 1 == 4 
             model.net.Split(current,['_[mask]_split1','_[mask]_split2','_[mask]_split3','_[mask]_split4'],axis=0)
             #tmp, _ = model.net.Concat(['_[mask]_split1','_[mask]_split2','_[mask]_split3','_[mask]_split4'],['con','c'],axis=0)
@@ -241,12 +241,13 @@ def mask_rcnn_fcn_plus_fc_head_v1upXconvs(
             fc_branch = model.Relu(fc_branch,fc_branch)
             fc_branch = model.FC(
                 fc_branch,
-                'fc',
-                dim_inner//2,
+                'mask_fc',
+                14*14*dim_inner//2,
                 cfg.MRCNN.RESOLUTION**2,
                 weight_init=gauss_fill(0.001),
-                bias_init=('ConstantFill',{'value':0.})
+                bias_init=const_fill(0.0)
             )
+            
             fc_branch, _ = model.net.Reshape(fc_branch,['fc_resized','oldshape'],
                                                 shape=[0,1,cfg.MRCNN.RESOLUTION,cfg.MRCNN.RESOLUTION])
             fc_branch = model.net.Tile(fc_branch,'fc_tiled',tiles=cfg.MODEL.NUM_CLASSES,axis=1)
