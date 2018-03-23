@@ -56,6 +56,46 @@ import utils.boxes as box_utils
 #pdb.set_trace()
 logger = logging.getLogger(__name__)
 
+def rotate_bound(shape, angle,cxy=None):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = shape
+    #pdb.set_trace()
+    (cX, cY) = (w // 2, h // 2)
+ 
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    #
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+ 
+    # compute the new bounding dimensions of the image
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+ 
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+ 
+    # perform the actual rotation and return the image
+    return M
+
+def rotate(im_shape,text_polys,rd_rotate):
+
+    #random_rotate=np.array([-90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90])
+    #rd_rotate=np.random.choice(random_rotate)
+
+    m=rotate_bound(im_shape,rd_rotate)
+    #pdb.set_trace()
+    text_polys=text_polys.reshape([len(text_polys),-1,2])
+    text_polys=np.concatenate((text_polys,np.ones([len(text_polys),text_polys.shape[1],1],dtype=np.float32)),-1)
+    m=np.transpose(m,[1,0])
+    text_polys=np.dot(text_polys,m.astype(np.float32))
+    text_polys=text_polys.reshape(len(text_polys),-1)
+    return text_polys
+
 class TxtDataset(object):
     """A class representing a COCO json dataset."""
 
@@ -129,6 +169,54 @@ class TxtDataset(object):
         #image_ids.sort()
         self.dataset_size = len(image_ids)
         #roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
+        
+
+        #'''
+        roidb_lt=[]
+        
+        for angle in [0,90,180,270]:
+            
+            roidb = [{} for i in range(self.dataset_size)]
+            roidb_lt.append(roidb)
+            #for idx, entry in zip(image_ids,roidb):
+            for idx, name, entry in zip(image_ids,names,roidb):
+                suffix = '.jpg'
+                entry['id'] = idx
+                entry['file_name'] = name.strip() + suffix
+                self._prep_roidb_entry(entry,angle)
+            #with open('roi.pik', 'w') as f:
+                #entry=pickle.dump(f)
+            if gt:
+                # Include ground-truth object annotations
+
+                self.debug_timer.tic()
+                #pdb.set_trace()
+                for entry in roidb:
+                    self._add_gt_annotations_rotation(entry,angle)
+                #pdb.set_trace()
+                logger.debug(
+                    '_add_gt_annotations_rotation took {:.3f}s'.
+                    format(self.debug_timer.toc(average=False))
+                )
+        var_all=[]
+        [var_all.extend(var) for var in roidb_lt]
+        roidb=var_all
+        if proposal_file is not None:
+            # Include proposals from a file
+            self.debug_timer.tic()
+            self._add_proposals_from_file(
+                roidb, proposal_file, min_proposal_size, proposal_limit,
+                crowd_filter_thresh
+            )
+            logger.debug(
+                '_add_proposals_from_file took {:.3f}s'.
+                format(self.debug_timer.toc(average=False))
+            )
+        _add_class_assignments(roidb)
+
+        #'''
+
+        '''
         roidb = [{} for i in range(self.dataset_size)]
         for idx, name, entry in zip(image_ids,names,roidb):
             suffix = '.jpg'
@@ -157,6 +245,7 @@ class TxtDataset(object):
                 format(self.debug_timer.toc(average=False))
             )
         _add_class_assignments(roidb)
+        '''
 
         #class balance 
         samples=np.zeros(cfg.MODEL.NUM_CLASSES-1).astype(np.int32)
@@ -186,7 +275,7 @@ class TxtDataset(object):
         #pdb.set_trace()
         return roidb
 
-    def _prep_roidb_entry(self, entry):
+    def _prep_roidb_entry(self, entry, angle):
         """Adds empty metadata fields to an roidb entry."""
         # Reference back to the parent dataset
         entry['dataset'] = self
@@ -200,6 +289,7 @@ class TxtDataset(object):
         assert os.path.exists(ann_path), 'Annotation \'{}\' not found'.format(ann_path)
         entry['annotation'] = ann_path
         entry['flipped'] = False
+        entry['angle']=angle
         entry['has_visible_keypoints'] = False
         # Empty placeholders
         entry['boxes'] = np.empty((0, 4), dtype=np.float32)
@@ -229,6 +319,130 @@ class TxtDataset(object):
         entry['width'] = im.shape[1]
         entry['height'] = im.shape[0]
 
+
+    def _add_gt_annotations_rotation(self, entry, angle=0.):
+        """Add ground truth annotation metadata to an roidb entry."""
+        #ann_ids = self.COCO.getAnnIds(imgIds=entry['id'], iscrowd=None)
+        #objs = self.COCO.loadAnns(ann_ids)
+        ann_file = open(entry['annotation'],'r')
+
+        objs = ann_file.readlines()
+        
+        # Sanitize bboxes -- some are invalid
+        valid_objs = []
+        valid_segms = []
+        width = entry['width']
+        height = entry['height']
+
+        for obj in objs:
+            try:
+                obj = obj.strip().split(' ')
+                assert len(obj) == 10, "There is an error in the annotation file: {}".format(entry['ann_path'])
+                obj_dict = {}
+                obj_dict['category_id'] = self.category_to_id_map[obj[8]]
+                assert (int(obj[9]) in [0,1,2])
+                obj_dict['difficult'] = int(obj[9]) #0 if obj[9] == '0' else 1 # 2 for outer box when split; 1 for difficult; 0 for not difficult
+                obj_dict['iscrowd'] = 0 # this attribute is from coco, set it to be 0 for default
+                obj_dict['segmentation'] = [[float(i) for i in obj[:8]]]
+                obj_dict['area'] = calcArea(obj_dict['segmentation'][0])
+                if obj_dict['area'] < cfg.TRAIN.GT_MIN_AREA:
+                    continue
+                #if obj_dict['difficult'] == 1 and cfg.TRAIN.SKIP_DIFFICULT_OBJ:
+                #    continue
+                if obj_dict['difficult'] == 2:
+                    continue
+                if 'ignore' in obj_dict and obj_dict['ignore'] == 1:
+                    continue
+                p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4=obj_dict['segmentation'][0]
+                plg = Polygon([(obj_dict['segmentation'][0][0],obj_dict['segmentation'][0][1]),\
+                            (obj_dict['segmentation'][0][2],obj_dict['segmentation'][0][3]),\
+                            (obj_dict['segmentation'][0][4],obj_dict['segmentation'][0][5]),\
+                            (obj_dict['segmentation'][0][6],obj_dict['segmentation'][0][7])])
+                if not plg.is_valid: 
+                    continue
+                polys_gt=rotate((height,width),np.array([[p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4]],dtype=np.float32),angle)
+                x1 = np.min(polys_gt[0][0::2])
+                x2 = np.max(polys_gt[0][0::2])
+                y1 = np.min(polys_gt[0][1::2])
+                y2 = np.max(polys_gt[0][1::2])
+                p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4=polys_gt[0]
+                obj_dict['bbox'] = [x1,y1,x2-x1+1,y2-y1+1]
+                
+                # Require non-zero seg area and more than 1x1 box size
+                if obj_dict['area'] > 0 and x2 > x1 and y2 > y1:
+                    obj_dict['clean_bbox'] = [x1, y1, x2, y2]
+                    #obj_dict['clean_polyinter']=xy_inter
+                    valid_objs.append(copy.deepcopy(obj_dict))
+                    valid_segms.append(copy.deepcopy(obj_dict['segmentation']))
+                    #pdb.set_trace()
+            except:
+                pdb.set_trace()
+                print('wrong')
+                continue
+        num_valid_objs = len(valid_objs)
+
+        boxes = np.zeros((num_valid_objs, 4), dtype=entry['boxes'].dtype)
+        #polyinters=np.zeros((num_valid_objs, 28), dtype=entry['polyinters'].dtype)
+        gt_classes = np.zeros((num_valid_objs), dtype=entry['gt_classes'].dtype)
+        gt_overlaps = np.zeros(
+            (num_valid_objs, self.num_classes),
+            dtype=entry['gt_overlaps'].dtype
+        )
+        seg_areas = np.zeros((num_valid_objs), dtype=entry['seg_areas'].dtype)
+        is_crowd = np.zeros((num_valid_objs), dtype=entry['is_crowd'].dtype)
+        box_to_gt_ind_map = np.zeros(
+            (num_valid_objs), dtype=entry['box_to_gt_ind_map'].dtype
+        )
+        if self.keypoints is not None:
+            gt_keypoints = np.zeros(
+                (num_valid_objs, 3, self.num_keypoints),
+                dtype=entry['gt_keypoints'].dtype
+            )
+
+
+        im_has_visible_keypoints = False
+        for ix, obj in enumerate(valid_objs):
+            cls = self.json_category_id_to_contiguous_id[obj['category_id']]
+            boxes[ix, :] = obj['clean_bbox']
+            #polyinters[ix,:]=obj['clean_polyinter']
+            gt_classes[ix] = cls
+            seg_areas[ix] = obj['area']
+            is_crowd[ix] = obj['iscrowd']
+
+
+            box_to_gt_ind_map[ix] = ix
+            if self.keypoints is not None:
+                gt_keypoints[ix, :, :] = self._get_gt_keypoints(obj)
+                if np.sum(gt_keypoints[ix, 2, :]) > 0:
+                    im_has_visible_keypoints = True
+            if obj['iscrowd']:
+                # Set overlap to -1 for all classes for crowd objects
+                # so they will be excluded during training
+                gt_overlaps[ix, :] = -1.0
+            else:
+                gt_overlaps[ix, cls] = 1.0
+        entry['boxes'] = np.append(entry['boxes'], boxes, axis=0)
+        #entry['polyinters']=np.append(entry['polyinters'],polyinters,axis=0)
+        #pdb.set_trace()
+        entry['segms'].extend(valid_segms)
+        # To match the original implementation:
+        # entry['boxes'] = np.append(
+        #     entry['boxes'], boxes.astype(np.int).astype(np.float), axis=0)
+        entry['gt_classes'] = np.append(entry['gt_classes'], gt_classes)
+        entry['seg_areas'] = np.append(entry['seg_areas'], seg_areas)
+        entry['gt_overlaps'] = np.append(
+            entry['gt_overlaps'].toarray(), gt_overlaps, axis=0
+        )
+        entry['gt_overlaps'] = scipy.sparse.csr_matrix(entry['gt_overlaps'])
+        entry['is_crowd'] = np.append(entry['is_crowd'], is_crowd)
+        entry['box_to_gt_ind_map'] = np.append(
+            entry['box_to_gt_ind_map'], box_to_gt_ind_map
+        )
+        if self.keypoints is not None:
+            entry['gt_keypoints'] = np.append(
+                entry['gt_keypoints'], gt_keypoints, axis=0
+            )
+            entry['has_visible_keypoints'] = im_has_visible_keypoints
 
     def _add_gt_annotations(self, entry):
         """Add ground truth annotation metadata to an roidb entry."""
