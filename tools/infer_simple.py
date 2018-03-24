@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/debug_infer_minrect_iter6',
+        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/debug_infer_minrect_iter9',
         type=str
     )
     parser.add_argument(
@@ -154,7 +154,7 @@ def main(args):
         if not os.path.isdir(args.output_dir):
             os.makedirs(args.output_dir)
 
-        result_files = [open(os.path.join(args.output_dir,'Task1_{:s}.txt'.format(v)),'a') 
+        result_files = [open(os.path.join(args.output_dir,'Task1_{:s}.txt'.format(v)),'w') 
                             for k,v in dummy_coco_dataset.classes.items()]
         
         #vis_utils.vis_one_image_save_hbbox_result(

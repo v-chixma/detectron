@@ -171,7 +171,7 @@ class TxtDataset(object):
         #roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
         
 
-        #'''
+        #'''this is code for rotation augment
         roidb_lt=[]
         
         for angle in [0,90,180,270]:
@@ -216,7 +216,7 @@ class TxtDataset(object):
 
         #'''
 
-        '''
+        '''this is code for roidb without rotation augment
         roidb = [{} for i in range(self.dataset_size)]
         for idx, name, entry in zip(image_ids,names,roidb):
             suffix = '.jpg'
