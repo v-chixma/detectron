@@ -3,7 +3,7 @@ import numpy as np
 import pdb
 import glob
 import os
-path='./tmp/debug_infer/'
+path='./tmp/debug_infer_minrect_iter9_merge/'
 txts=glob.glob(path+'Task1*')
 for i_txt in range(len(txts)):
     if i_txt<3:
@@ -24,8 +24,8 @@ for i_txt in range(len(txts)):
         except:
             pdb.set_trace()
         
-    for im in im_name[::56]:
-        im_draw=cv2.imread('/disk1/yxzhu/data/icpr2018/DOTA_TEST/test/images/images/'+im+'.png')
+    for im in im_name[:]:
+        im_draw=cv2.imread('/home/yxzh/dataset/icpr2018/val/images/'+im+'.png')
         #pdb.set_trace()
         im_draw=im_draw.copy()
         polys=np.array(im_dict[im])

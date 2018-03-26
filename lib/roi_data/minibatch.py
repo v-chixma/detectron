@@ -37,6 +37,7 @@ import roi_data.fast_rcnn
 import roi_data.retinanet
 import roi_data.rpn
 import utils.blob as blob_utils
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,21 @@ def _get_image_blob(roidb):
             'Failed to read image \'{}\''.format(roidb[i]['image'])
         if roidb[i]['flipped']:
             im = im[:, ::-1, :]
+
+        #add rotation
+        if 'angle' in roidb[i]:
+            (h,w) = im.shape[:2]
+            center = (w // 2,h // 2)
+            angle = roidb[i]['angle'] 
+            M = cv2.getRotationMatrix2D(center,-angle,1.0)
+            rotated_im = cv2.warpAffine(im,M,(w,h))
+            roidb[i]['height'] = rotated_im.shape[0]
+            roidb[i]['width'] = rotated_im.shape[1]
+            print(angle,im.shape,rotated_im.shape)
+            #pdb.set_trace()
+            im = rotated_im
+        
+    
         target_size = cfg.TRAIN.SCALES[scale_inds[i]]
         im, im_scale = blob_utils.prep_im_for_blob(
             im, cfg.PIXEL_MEANS, [target_size], cfg.TRAIN.MAX_SIZE

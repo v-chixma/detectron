@@ -201,6 +201,7 @@ class TxtDataset(object):
         var_all=[]
         [var_all.extend(var) for var in roidb_lt]
         roidb=var_all
+        
         if proposal_file is not None:
             # Include proposals from a file
             self.debug_timer.tic()
@@ -213,6 +214,7 @@ class TxtDataset(object):
                 format(self.debug_timer.toc(average=False))
             )
         _add_class_assignments(roidb)
+        
 
         #'''
 
@@ -360,12 +362,16 @@ class TxtDataset(object):
                             (obj_dict['segmentation'][0][6],obj_dict['segmentation'][0][7])])
                 if not plg.is_valid: 
                     continue
+                #assert obj_dict['area'] - plg.area < 0.01*plg.area, 'There is an error when calculate segs area'
+                #pdb.set_trace()
+
                 polys_gt=rotate((height,width),np.array([[p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4]],dtype=np.float32),angle)
                 x1 = np.min(polys_gt[0][0::2])
                 x2 = np.max(polys_gt[0][0::2])
                 y1 = np.min(polys_gt[0][1::2])
                 y2 = np.max(polys_gt[0][1::2])
                 p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4=polys_gt[0]
+                obj_dict['segmentation'] = [[p_x1,p_y1,p_x2,p_y2,p_x3,p_y3,p_x4,p_y4]]
                 obj_dict['bbox'] = [x1,y1,x2-x1+1,y2-y1+1]
                 
                 # Require non-zero seg area and more than 1x1 box size
