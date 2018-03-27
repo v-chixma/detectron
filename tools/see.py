@@ -6,8 +6,8 @@ import os
 path='./tmp/debug_infer_minrect_iter9_merge/'
 txts=glob.glob(path+'Task1*')
 for i_txt in range(len(txts)):
-    if i_txt<3:
-        continue
+    #if i_txt<3:
+    #    continue
     txt=txts[i_txt]
     with open(txt) as f:
         data=f.readlines()

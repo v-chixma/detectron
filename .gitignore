@@ -39,3 +39,4 @@ configs/12_2017_baselines/.nfs*
 tools/.nfs*
 .nfs*
 lib/datasets/.nfs*
+lib_rotateroi_crowd/*
