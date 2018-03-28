@@ -180,7 +180,8 @@ def mask_rcnn_fcn_plus_fc_head_v1upXconvs(
     """v1upXconvs design: X * (conv 3x3), convT 2x2."""
     current = model.RoIFeatureTransform(
         blob_in,
-        blob_out='_[mask]_roi_feat',
+        blob_out='mask_roi_feat',
+        #blob_out='_[mask]_roi_feat',
         blob_rois='mask_rois',
         method=cfg.MRCNN.ROI_XFORM_METHOD,
         resolution=cfg.MRCNN.ROI_XFORM_RESOLUTION,

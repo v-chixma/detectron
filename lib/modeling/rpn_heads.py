@@ -51,6 +51,39 @@ def add_generic_rpn_outputs(model, blob_in, dim_in, spatial_scale_in):
             loss_gradients = add_single_scale_rpn_losses(model)
     return loss_gradients
 
+def add_rpn_outputs_for_frcn_head(model, blob_in, dim_in, spatial_scale_in):
+    """Add RPN outputs (objectness classification and bounding box regression)
+    to an RPN model. Abstracts away the use of FPN.
+    """
+    loss_gradients = None
+    if cfg.FPN.FPN_ON:
+        # Delegate to the FPN module
+        FPN.add_fpn_rpn_outputs(model, blob_in, dim_in, spatial_scale_in)
+        if cfg.MODEL.FASTER_RCNN:
+            # CollectAndDistributeFpnRpnProposals also labels proposals when in
+            # training mode
+            model.CollectFpnRpnProposals()
+        if model.train:
+            loss_gradients = FPN.add_fpn_rpn_losses(model)
+    else:
+        # Not using FPN, add RPN to a single scale
+        add_single_scale_rpn_outputs(model, blob_in, dim_in, spatial_scale_in)
+        if model.train:
+            loss_gradients = add_single_scale_rpn_losses(model)
+    return loss_gradients
+
+def add_frcn_outputs_for_mask_head(model):
+    """Add RPN outputs (objectness classification and bounding box regression)
+    to an RPN model. Abstracts away the use of FPN.
+    input: 
+    """
+    
+    if model.train:
+        # Add op that generates training labels for in-network RPN proposals
+        model.GenerateMaskRoIs(['cls_prob', 'bbox_pred_odai', 'rois', 'roidb', 'im_info'], ['mask_rois','masks_int32'])
+    else:
+        model.GenerateMaskRoIs(['cls_prob', 'bbox_pred_odai', 'rois', 'im_info'], ['mask_rois'])
+
 
 def add_single_scale_rpn_outputs(model, blob_in, dim_in, spatial_scale):
     """Add RPN outputs to a single scale model (i.e., no FPN)."""
@@ -102,7 +135,7 @@ def add_single_scale_rpn_outputs(model, blob_in, dim_in, spatial_scale):
     if not model.train or cfg.MODEL.FASTER_RCNN:
         # Proposals are needed during:
         #  1) inference (== not model.train) for RPN only and Faster R-CNN
-        #  OR
+        #  OR 
         #  2) training for Faster R-CNN
         # Otherwise (== training for RPN only), proposals are not needed
         model.net.Sigmoid('rpn_cls_logits', 'rpn_cls_probs')

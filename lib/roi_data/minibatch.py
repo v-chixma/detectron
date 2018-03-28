@@ -114,7 +114,7 @@ def _get_image_blob(roidb):
             rotated_im = cv2.warpAffine(im,M,(w,h))
             roidb[i]['height'] = rotated_im.shape[0]
             roidb[i]['width'] = rotated_im.shape[1]
-            print(angle,im.shape,rotated_im.shape)
+            #print(angle,im.shape,rotated_im.shape)
             #pdb.set_trace()
             im = rotated_im
         

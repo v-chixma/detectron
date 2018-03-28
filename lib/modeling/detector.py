@@ -32,8 +32,10 @@ from caffe2.python.modeling.parameter_info import ParameterTags
 from core.config import cfg
 from ops.collect_and_distribute_fpn_rpn_proposals \
     import CollectAndDistributeFpnRpnProposalsOp
+from ops.collect_fpn_rpn_proposals import CollectFpnRpnProposalsOp
 from ops.generate_proposal_labels import GenerateProposalLabelsOp
 from ops.generate_proposals import GenerateProposalsOp
+from ops.generate_mask_rois import GenerateMaskRoIsOp
 import roi_data.fast_rcnn
 import utils.c2 as c2_utils
 
@@ -136,6 +138,41 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         )(blobs_in, blobs_out, name=name, spatial_scale=spatial_scale)
         return blobs_out
 
+    def GenerateMaskRoIs(self, blobs_in, blobs_out):
+        """Op for generating RPN porposals.
+
+        blobs_in:
+          - 'cls_prob': 2D tensor of shape (P, K), where P is the
+            number of rois, K is the number of classes.Each value represents 
+            a "probability of object" rating in [0, 1].
+          - 'bbox_pred_odai': 4D tensor of shape (P, 4 * K) of predicted
+            deltas for transformation rois(which are on the network input images) 
+            into mask branch proposals.
+          - 'im_info': 2D tensor of shape (N, 3) where the three columns encode
+            the input image's [height, width, scale]. Height and width are
+            for the input to the network, not the original image; scale is the
+            scale factor used to scale the original image to the network input
+            size.
+
+        blobs_out:
+          - 'mask_rois': 2D tensor of shape (P, 5), for P proposals where the
+            five columns encode [batch ind, x1, y1, x2, y2]. The boxes are
+            w.r.t. the network input, which is a *scaled* version of the
+            original image; these proposals must be scaled by 1 / scale (where
+            scale comes from im_info; see above) to transform it back to the
+            original input image coordinate system.
+          - 'mask_roi_probs': 2D tensor abstracted from cls_prob, where cls != 0 (bg)
+            (extracted from rpn_cls_probs; see above).
+        """
+        name = 'GenerateMaskRoIsOp:' + ','.join([str(b) for b in blobs_in])
+        # spatial_scale passed to the Python op is only used in convert_pkl_to_pb
+        self.net.Python(
+            GenerateMaskRoIsOp(self.train).forward
+        )(blobs_in, blobs_out, name=name)
+        return blobs_out
+
+    
+
     def GenerateProposalLabels(self, blobs_in):
         """Op for generating training labels for RPN proposals. This is used
         when training RPN jointly with Fast/Mask R-CNN (as in end-to-end
@@ -220,6 +257,62 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         outputs = self.net.Python(
             CollectAndDistributeFpnRpnProposalsOp(self.train).forward
+        )(blobs_in, blobs_out, name=name)
+
+        return outputs
+
+    def CollectFpnRpnProposals(self):
+        """Merge RPN proposals generated at multiple FPN levels and then
+        distribute those proposals to their appropriate FPN levels. An anchor
+        at one FPN level may predict an RoI that will map to another level,
+        hence the need to redistribute the proposals.
+
+        This function assumes standard blob names for input and output blobs.
+
+        Input blobs: [rpn_rois_fpn<min>, ..., rpn_rois_fpn<max>,
+                      rpn_roi_probs_fpn<min>, ..., rpn_roi_probs_fpn<max>]
+          - rpn_rois_fpn<i> are the RPN proposals for FPN level i; see rpn_rois
+            documentation from GenerateProposals.
+          - rpn_roi_probs_fpn<i> are the RPN objectness probabilities for FPN
+            level i; see rpn_roi_probs documentation from GenerateProposals.
+
+        If used during training, then the input blobs will also include:
+          [roidb, im_info] (see GenerateProposalLabels).
+
+        Output blobs: [rois_fpn<min>, ..., rois_rpn<max>, rois,
+                       rois_idx_restore]
+          - rois_fpn<i> are the RPN proposals for FPN level i
+          - rois_idx_restore is a permutation on the concatenation of all
+            rois_fpn<i>, i=min...max, such that when applied the RPN RoIs are
+            restored to their original order in the input blobs.
+
+        If used during training, then the output blobs will also include:
+          [labels, bbox_targets, bbox_inside_weights, bbox_outside_weights].
+        """
+        k_max = cfg.FPN.RPN_MAX_LEVEL
+        k_min = cfg.FPN.RPN_MIN_LEVEL
+
+        # Prepare input blobs
+        rois_names = ['rpn_rois_fpn' + str(l) for l in range(k_min, k_max + 1)]
+        score_names = [
+            'rpn_roi_probs_fpn' + str(l) for l in range(k_min, k_max + 1)
+        ]
+        blobs_in = rois_names + score_names
+        if self.train:
+            blobs_in += ['roidb', 'im_info']
+        blobs_in = [core.ScopedBlobReference(b) for b in blobs_in]
+        name = 'CollectFpnRpnProposalsOp:' + ','.join(
+            [str(b) for b in blobs_in]
+        )
+
+        # Prepare output blobs
+        blobs_out = roi_data.fast_rcnn.get_fast_rcnn_blob_names_without_mask_blob(
+            is_training=self.train
+        )
+        blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
+
+        outputs = self.net.Python(
+            CollectFpnRpnProposalsOp(self.train).forward
         )(blobs_in, blobs_out, name=name)
 
         return outputs

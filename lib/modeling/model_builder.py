@@ -185,8 +185,12 @@ def build_generic_detection_model(
 
         if cfg.RPN.RPN_ON:
             # Add the RPN head
-            head_loss_gradients['rpn'] = rpn_heads.add_generic_rpn_outputs(
+            #head_loss_gradients['rpn'] = rpn_heads.add_generic_rpn_outputs(
+            #    model, blob_conv, dim_conv, spatial_scale_conv
+
+            head_loss_gradients['rpn'] = rpn_heads.add_rpn_outputs_for_frcn_head(
                 model, blob_conv, dim_conv, spatial_scale_conv
+
             )
 
         if cfg.FPN.FPN_ON:
@@ -205,6 +209,7 @@ def build_generic_detection_model(
 
         if cfg.MODEL.MASK_ON:
             # Add the mask head
+            rpn_heads.add_frcn_outputs_for_mask_head(model)
             head_loss_gradients['mask'] = _add_roi_mask_head(
                 model, add_roi_mask_head_func, blob_conv, dim_conv,
                 spatial_scale_conv
