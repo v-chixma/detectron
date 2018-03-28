@@ -50,6 +50,7 @@ class GenerateMaskRoIsOp(object):
         #print(cls_prob.shape)
         cls_prob = cls_prob.reshape((-1,cfg.MODEL.NUM_CLASSES))
         roi_cls_inds = np.argmax(cls_prob, axis = 1)
+        bbox_pred_odai = bbox_pred_odai.reshape((-1,4*cfg.MODEL.NUM_CLASSES))
         #print(roi_cls_inds)
         #pdb.set_trace()
 
