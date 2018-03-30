@@ -96,6 +96,7 @@ def polys_to_mask_wrt_box(polygons, box, M):
     is understood to be enclosed in the given box and rasterized to an M x M
     mask. The resulting mask is therefore of shape (M, M).
     """
+    assert box.shape[0] == 4 #add by cxma
     w = box[2] - box[0]
     h = box[3] - box[1]
 

@@ -125,12 +125,13 @@ class GenerateMaskRoIsOp(object):
                             mask_class_labels = np.vstack((mask_class_labels, polys_gt_class[fg_polys_inds[tmp]]))
 
                         # add fg targets
-                        for j in range(batch_mask_rois.shape[0]):
+                        for j in range(batch_mask_boxes.shape[0]):
                             fg_polys_ind = fg_polys_inds[j]
                             poly_gt = polys_gt[fg_polys_ind]
-                            roi_fg = batch_mask_rois[j]
+                            roi_fg = batch_mask_boxes[j]
                             # Rasterize the portion of the polygon mask within the given fg roi
                             # to an M x M binary image
+                            assert batch_mask_boxes.shape[1] == 4
                             mask = segm_utils.polys_to_mask_wrt_box(poly_gt, roi_fg, M)
                             mask = np.array(mask > 0, dtype=np.int32)  # Ensure it's binary
                             masks[count, :] = np.reshape(mask, M**2)
