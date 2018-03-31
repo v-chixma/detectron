@@ -32,6 +32,8 @@ from caffe2.python.modeling.parameter_info import ParameterTags
 from core.config import cfg
 from ops.collect_and_distribute_fpn_rpn_proposals \
     import CollectAndDistributeFpnRpnProposalsOp
+from ops.collect_and_distribute_fpn_rpn_proposals \
+    import CollectFpnRpnProposalsForOHEMOp
 from ops.generate_proposal_labels import GenerateProposalLabelsOp
 from ops.generate_proposals import GenerateProposalsOp
 import roi_data.fast_rcnn
@@ -220,6 +222,81 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         outputs = self.net.Python(
             CollectAndDistributeFpnRpnProposalsOp(self.train).forward
+        )(blobs_in, blobs_out, name=name)
+
+        return outputs
+
+    def CollectFpnRpnProposalsForOHEM(self):
+        """Merge RPN proposals generated at multiple FPN levels and then
+        distribute those proposals to their appropriate FPN levels. An anchor
+        at one FPN level may predict an RoI that will map to another level,
+        hence the need to redistribute the proposals.
+
+        This function assumes standard blob names for input and output blobs.
+
+        Input blobs: [rpn_rois_fpn<min>, ..., rpn_rois_fpn<max>,
+                      rpn_roi_probs_fpn<min>, ..., rpn_roi_probs_fpn<max>]
+          - rpn_rois_fpn<i> are the RPN proposals for FPN level i; see rpn_rois
+            documentation from GenerateProposals.
+          - rpn_roi_probs_fpn<i> are the RPN objectness probabilities for FPN
+            level i; see rpn_roi_probs documentation from GenerateProposals.
+
+        If used during training, then the input blobs will also include:
+          [roidb, im_info] (see GenerateProposalLabels).
+
+        Output blobs: [rois_fpn<min>, ..., rois_rpn<max>, rois,
+                       rois_idx_restore]
+          - rois_fpn<i> are the RPN proposals for FPN level i
+          - rois_idx_restore is a permutation on the concatenation of all
+            rois_fpn<i>, i=min...max, such that when applied the RPN RoIs are
+            restored to their original order in the input blobs.
+
+        If used during training, then the output blobs will also include:
+          [labels, bbox_targets, bbox_inside_weights, bbox_outside_weights].
+        """
+        k_max = cfg.FPN.RPN_MAX_LEVEL
+        k_min = cfg.FPN.RPN_MIN_LEVEL
+
+        # Prepare input blobs
+        rois_names = ['rpn_rois_fpn' + str(l) for l in range(k_min, k_max + 1)]
+        score_names = [
+            'rpn_roi_probs_fpn' + str(l) for l in range(k_min, k_max + 1)
+        ]
+        blobs_in = rois_names + score_names
+        blobs_in += ['roidb', 'im_info']
+        blobs_in = [core.ScopedBlobReference(b) for b in blobs_in]
+        name = 'CollectFpnRpnProposalsForOHEMOp:' + ','.join(
+            [str(b) for b in blobs_in]
+        )
+
+        # Prepare output blobs
+        #blobs_out = ['rois_ohem']
+        blobs_out = ['rois_ohem','labels_int32_ohem','bbox_targets_ohem',\
+                    'bbox_inside_weights_ohem','bbox_outside_weights_ohem']
+        blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
+
+        outputs = self.net.Python(
+            CollectFpnRpnProposalsForOHEMOp(self.train).forward
+        )(blobs_in, blobs_out, name=name)
+
+        return outputs
+
+    def GenerateHardExamples(self):
+        blobs_in = ['cls_prob_ohem','bbox_pred_odai_ohem',\
+                    'rois_ohem','labels_int32_ohem','bbox_targets_ohem',\
+                    'bbox_inside_weights_ohem','bbox_outside_weights_ohem',\
+                    'roidb','im_info']
+        blobs_in = [core.ScopedBlobReference(b) for b in blobs_in]
+
+        blobs_out = ['rois','labels_int32','bbox_targets',\
+                    'bbox_inside_weights','bbox_outside_weights']
+        if cfg.MODEL.MASK_ON:
+            blobs_out += ['mask_rois', 'mask_int32']
+
+        blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
+
+        outputs = self.net.Python(
+            GenerateHardExamplesOp(self.train).forward
         )(blobs_in, blobs_out, name=name)
 
         return outputs
@@ -448,6 +525,40 @@ class DetectionModelHelper(cnn.CNNModelHelper):
 
         return self.net.Conv(
             blobs_in, blob_out, kernel=kernel, order=self.order, **kwargs
+        )
+
+    def FCShared(
+        self,
+        blob_in,
+        blob_out,
+        dim_in,
+        dim_out,
+        weight=None,
+        bias=None,
+        **kwargs
+    ):
+        """Add FC op that shares weights and biases with another FC op.
+        """
+        use_bias = (
+            False if ('no_bias' in kwargs and kwargs['no_bias']) else True
+        )
+
+        if self.use_cudnn:
+            kwargs['engine'] = 'CUDNN'
+            kwargs['exhaustive_search'] = self.cudnn_exhaustive_search
+            if self.ws_nbytes_limit:
+                kwargs['ws_nbytes_limit'] = self.ws_nbytes_limit
+
+        if use_bias:
+            blobs_in = [blob_in, weight, bias]
+        else:
+            blobs_in = [blob_in, weight]
+
+        if 'no_bias' in kwargs:
+            del kwargs['no_bias']
+
+        return self.net.FC(
+            blobs_in, blob_out, order=self.order, **kwargs
         )
 
     def BilinearInterpolation(

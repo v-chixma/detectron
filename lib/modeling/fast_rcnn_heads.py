@@ -65,6 +65,50 @@ def add_fast_rcnn_outputs(model, blob_in, dim):
         bias_init=const_fill(0.0)
     )
 
+def add_fast_rcnn_outputs_ohem(model, blob_in, dim):
+    """Add RoI classification and bounding box regression output ops."""
+    model.FC(
+        blob_in,
+        'cls_score_odai_ohem',
+        dim,
+        model.num_classes,
+        weight_init=gauss_fill(0.01),
+        bias_init=const_fill(0.0)
+    )
+    model.Softmax('cls_score_odai_ohem', 'cls_prob_ohem', engine='CUDNN')
+    model.FC(
+        blob_in,
+        'bbox_pred_odai_ohem',
+        dim,
+        model.num_classes * 4,
+        weight_init=gauss_fill(0.001),
+        bias_init=const_fill(0.0)
+    )
+
+def add_fast_rcnn_outputs_share_weights_with_ohem(model, blob_in, dim):
+    """Add RoI classification and bounding box regression output ops."""
+    model.FCShared(
+        blob_in,
+        'cls_score_odai',
+        dim,
+        model.num_classes,
+        weight='cls_score_odai_ohem_w',
+        bias='cls_score_odai_ohem_b'
+    )
+    assert model.train
+    ''':  # == if test
+        # Only add softmax when testing; during training the softmax is combined
+        # with the label cross entropy loss for numerical stability
+        model.Softmax('cls_score_odai', 'cls_prob', engine='CUDNN')
+    '''
+    model.FCShared(
+        blob_in,
+        'bbox_pred_odai',
+        dim,
+        model.num_classes * 4,
+        weight='bbox_pred_odai_ohem_w',
+        bias='bbox_pred_odai_ohem_b'
+    )
 
 def add_fast_rcnn_losses(model):
     """Add losses for RoI classification and bounding box regression."""
@@ -130,5 +174,117 @@ def add_roi_2mlp_head(model, blob_in, dim_in, spatial_scale, multilevel_fusion =
         model.net.Split('fc6',['bbox_split1','bbox_split2','bbox_split3','bbox_split4'],axis=0)
         model.net.Max(['bbox_split1','bbox_split2','bbox_split3','bbox_split4'],'bbox_split')
         model.FC('bbox_split', 'fc7', hidden_dim, hidden_dim)
+        model.Relu('fc7', 'fc7')
+        return 'fc7', hidden_dim
+
+def add_roi_2mlp_ohem_head(model, blob_in, dim_in, spatial_scale, multilevel_fusion = False):
+    """Add a ReLU MLP with two hidden layers."""
+    if multilevel_fusion == False: 
+        hidden_dim = cfg.FAST_RCNN.MLP_HEAD_DIM
+        roi_size = cfg.FAST_RCNN.ROI_XFORM_RESOLUTION
+        roi_ohem_feat = model.RoIFeatureTransform(
+            blob_in,
+            'roi_feat_ohem',
+            blob_rois='rois_ohem',
+            method=cfg.FAST_RCNN.ROI_XFORM_METHOD,
+            resolution=roi_size,
+            sampling_ratio=cfg.FAST_RCNN.ROI_XFORM_SAMPLING_RATIO,
+            spatial_scale=spatial_scale
+        )
+        model.FC(roi_ohem_feat, 'fc6_ohem', dim_in * roi_size * roi_size, hidden_dim)
+        model.Relu('fc6_ohem', 'fc6_ohem')
+        model.FC('fc6_ohem', 'fc7_ohem', hidden_dim, hidden_dim)
+        model.Relu('fc7_ohem', 'fc7_ohem')
+        return 'fc7_ohem', hidden_dim
+
+    if multilevel_fusion == True: 
+        hidden_dim = cfg.FAST_RCNN.MLP_HEAD_DIM
+        roi_size = cfg.FAST_RCNN.ROI_XFORM_RESOLUTION
+        roi_ohem_feat = model.RoIFeatureTransform(
+            blob_in,
+            'roi_feat_ohem',
+            blob_rois='rois_ohem',
+            method=cfg.FAST_RCNN.ROI_XFORM_METHOD,
+            resolution=roi_size,
+            sampling_ratio=cfg.FAST_RCNN.ROI_XFORM_SAMPLING_RATIO,
+            spatial_scale=spatial_scale,
+            multilevel_fusion = True
+        )
+        model.FC(roi_ohem_feat, 'fc6_ohem', dim_in * roi_size * roi_size, hidden_dim)
+        model.Relu('fc6_ohem', 'fc6_ohem')
+        assert cfg.FPN.ROI_MAX_LEVEL - cfg.FPN.ROI_MIN_LEVEL + 1 == 4 
+        model.net.Split('fc6_ohem',['bbox_split1_ohem','bbox_split2_ohem','bbox_split3_ohem','bbox_split4_ohem'],axis=0)
+        model.net.Max(['bbox_split1_ohem','bbox_split2_ohem','bbox_split3_ohem','bbox_split4_ohem'],'bbox_split_ohem')
+        model.FC('bbox_split_ohem', 'fc7_ohem', hidden_dim, hidden_dim)
+        model.Relu('fc7_ohem', 'fc7_ohem')
+        return 'fc7_ohem', hidden_dim
+
+def add_roi_2mlp_head_share_weights_whith_ohem(model, blob_in, dim_in, spatial_scale, multilevel_fusion = False):
+    """Add a ReLU MLP with two hidden layers."""
+    if multilevel_fusion == False: 
+        hidden_dim = cfg.FAST_RCNN.MLP_HEAD_DIM
+        roi_size = cfg.FAST_RCNN.ROI_XFORM_RESOLUTION
+        roi_feat = model.RoIFeatureTransform(
+            blob_in,
+            'roi_feat',
+            blob_rois='rois',
+            method=cfg.FAST_RCNN.ROI_XFORM_METHOD,
+            resolution=roi_size,
+            sampling_ratio=cfg.FAST_RCNN.ROI_XFORM_SAMPLING_RATIO,
+            spatial_scale=spatial_scale
+        )
+        model.FCShared(
+            roi_feat, 
+            'fc6', 
+            dim_in * roi_size * roi_size, 
+            hidden_dim,
+            weight='fc6_ohem_w',
+            bias='fc6_ohem_b'
+        )
+        model.Relu('fc6', 'fc6')
+        model.FCShared(
+            'fc6', 
+            'fc7', 
+            hidden_dim, 
+            hidden_dim,
+            weight='fc7_ohem_w',
+            bias='fc7_ohem_b'
+        )
+        model.Relu('fc7', 'fc7')
+        return 'fc7', hidden_dim
+
+    if multilevel_fusion == True: 
+        hidden_dim = cfg.FAST_RCNN.MLP_HEAD_DIM
+        roi_size = cfg.FAST_RCNN.ROI_XFORM_RESOLUTION
+        roi_feat = model.RoIFeatureTransform(
+            blob_in,
+            'roi_feat',
+            blob_rois='rois',
+            method=cfg.FAST_RCNN.ROI_XFORM_METHOD,
+            resolution=roi_size,
+            sampling_ratio=cfg.FAST_RCNN.ROI_XFORM_SAMPLING_RATIO,
+            spatial_scale=spatial_scale,
+            multilevel_fusion = True
+        )
+        model.FCShared(
+            roi_feat, 
+            'fc6', 
+            dim_in * roi_size * roi_size, 
+            hidden_dim,
+            weight='fc6_ohem_w',
+            bias='fc6_ohem_b'
+        )
+        model.Relu('fc6', 'fc6')
+        assert cfg.FPN.ROI_MAX_LEVEL - cfg.FPN.ROI_MIN_LEVEL + 1 == 4 
+        model.net.Split('fc6',['bbox_split1','bbox_split2','bbox_split3','bbox_split4'],axis=0)
+        model.net.Max(['bbox_split1','bbox_split2','bbox_split3','bbox_split4'],'bbox_split')
+        model.FCShared(
+            'bbox_split', 
+            'fc7', 
+            hidden_dim, 
+            hidden_dim,
+            weight='fc7_ohem_w',
+            bias='fc7_ohem_b'
+        )
         model.Relu('fc7', 'fc7')
         return 'fc7', hidden_dim

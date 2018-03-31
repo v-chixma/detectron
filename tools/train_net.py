@@ -164,6 +164,15 @@ def train_model():
 
     # Save the final model
     checkpoints['final'] = os.path.join(output_dir, 'model_final.pkl')
+
+    #test whether shared fc's weights will be saved
+    print(workspace.HasBlob('cls_score_odai_w'))
+    print(workspace.HasBlob('cls_score_odai_ohem_w'))
+    a=workspace.FetchBlob('cls_score_odai_w')
+    b=workspace.FetchBlob('cls_score_odai_ohem_w')
+    print((a == b).all())
+    pdb.set_trace()
+
     nu.save_model_to_weights_file(checkpoints['final'], model)
     # Shutdown data loading threads
     model.roi_data_loader.shutdown()

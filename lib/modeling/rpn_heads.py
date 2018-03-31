@@ -42,6 +42,8 @@ def add_generic_rpn_outputs(model, blob_in, dim_in, spatial_scale_in):
             # CollectAndDistributeFpnRpnProposals also labels proposals when in
             # training mode
             model.CollectAndDistributeFpnRpnProposals()
+            #collect fpn rpn rois for ohem to get hard examples for frcn head training
+            #model.CollectFpnRpnProposalsForOHEM()
         if model.train:
             loss_gradients = FPN.add_fpn_rpn_losses(model)
     else:
@@ -51,6 +53,30 @@ def add_generic_rpn_outputs(model, blob_in, dim_in, spatial_scale_in):
             loss_gradients = add_single_scale_rpn_losses(model)
     return loss_gradients
 
+def add_generic_rpn_outputs_for_ohem(model, blob_in, dim_in, spatial_scale_in):
+    """Add RPN outputs (objectness classification and bounding box regression)
+    to an RPN model. Abstracts away the use of FPN.
+    """
+    loss_gradients = None
+    if cfg.FPN.FPN_ON:
+        # Delegate to the FPN module
+        FPN.add_fpn_rpn_outputs(model, blob_in, dim_in, spatial_scale_in)
+        if cfg.MODEL.FASTER_RCNN:
+            '''
+            collect fpn rpn rois for ohem to get hard examples for frcn head training
+            CollectFpnRpnProposalsForOHEM op need to generate :
+            ['rois_ohem','labels_int32_ohem','bbox_targets_ohem','bbox_inside_weights_ohem','bbox_outside_weights_ohem']
+            '''
+            model.CollectFpnRpnProposalsForOHEM()
+        #OHEM is only for training, so there must be an add_loss operator
+        loss_gradients = FPN.add_fpn_rpn_losses(model)
+    else:
+        # Not using FPN, no impletement
+        assert cfg.FPN.FPN_ON, 'FPN_ON Error!'
+        #add_single_scale_rpn_outputs(model, blob_in, dim_in, spatial_scale_in)
+        #if model.train:
+        #    loss_gradients = add_single_scale_rpn_losses(model)
+    return loss_gradients
 
 def add_single_scale_rpn_outputs(model, blob_in, dim_in, spatial_scale):
     """Add RPN outputs to a single scale model (i.e., no FPN)."""
