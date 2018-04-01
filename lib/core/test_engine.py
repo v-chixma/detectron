@@ -28,7 +28,7 @@ import numpy as np
 import os
 import yaml
 
-from caffe2.python import workspace
+from caffe2.python import workspace,core
 
 from core.config import cfg
 from core.config import get_output_dir
@@ -45,6 +45,7 @@ import utils.env as envu
 import utils.net as net_utils
 import utils.subprocess as subprocess_utils
 import utils.vis as vis_utils
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +269,35 @@ def initialize_model_from_cfg(gpu_id=0):
         model, cfg.TEST.WEIGHTS, gpu_id=gpu_id,
     )
     model_builder.add_inference_inputs(model)
+
+    #model.GenerateOHEMInferenceBlobs()
+    #add special blobs that are from ohem to share weights with frcn head
+    '''ohem_blob_names = ['fc6_ohem_w','fc6_ohem_b','fc7_ohem_w','fc7_ohem_b',\
+                    'cls_score_odai_ohem_w','cls_score_odai_ohem_b',\
+                    'bbox_pred_odai_ohem_w','bbox_pred_odai_ohem_b']
+    with c2_utils.NamedCudaScope(gpu_id):
+        for ohem_blob_name in ohem_blob_names:
+            workspace.CreateBlob(core.ScopedName(ohem_blob_name))
+    #init blobs
+    tmp_w = np.zeros((1024,12544),dtype=np.float32)
+    tmp_b = np.zeros((1024,),dtype=np.float32)
+    workspace.FeedBlob('gpu_{}/fc6_ohem_w'.format(gpu_id),tmp_w)
+    workspace.FeedBlob('gpu_{}/fc6_ohem_b'.format(gpu_id),tmp_b)
+    tmp_w = np.zeros((1024,1024),dtype=np.float32)
+    tmp_b = np.zeros((1024,),dtype=np.float32)
+    workspace.FeedBlob('gpu_{}/fc7_ohem_w'.format(gpu_id),tmp_w)
+    workspace.FeedBlob('gpu_{}/fc7_ohem_b'.format(gpu_id),tmp_b)
+    tmp_w = np.zeros((16,1024),dtype=np.float32)
+    tmp_b = np.zeros((16,),dtype=np.float32)
+    workspace.FeedBlob('gpu_{}/cls_score_odai_ohem_w'.format(gpu_id),tmp_w)
+    workspace.FeedBlob('gpu_{}/cls_score_odai_ohem_b'.format(gpu_id),tmp_b)
+    tmp_w = np.zeros((64,1024),dtype=np.float32)
+    tmp_b = np.zeros((64,),dtype=np.float32)
+    workspace.FeedBlob('gpu_{}/bbox_pred_odai_ohem_w'.format(gpu_id),tmp_w)
+    workspace.FeedBlob('gpu_{}/bbox_pred_odai_ohem_b'.format(gpu_id),tmp_b)
+    '''
+    #pdb.set_trace()
+
     workspace.CreateNet(model.net)
     workspace.CreateNet(model.conv_body_net)
     if cfg.MODEL.MASK_ON:

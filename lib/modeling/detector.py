@@ -34,8 +34,11 @@ from ops.collect_and_distribute_fpn_rpn_proposals \
     import CollectAndDistributeFpnRpnProposalsOp
 from ops.collect_and_distribute_fpn_rpn_proposals \
     import CollectFpnRpnProposalsForOHEMOp
+from ops.collect_and_distribute_fpn_rpn_proposals \
+    import GenerateHardExamplesOp
 from ops.generate_proposal_labels import GenerateProposalLabelsOp
 from ops.generate_proposals import GenerateProposalsOp
+
 import roi_data.fast_rcnn
 import utils.c2 as c2_utils
 
@@ -291,15 +294,37 @@ class DetectionModelHelper(cnn.CNNModelHelper):
         blobs_out = ['rois','labels_int32','bbox_targets',\
                     'bbox_inside_weights','bbox_outside_weights']
         if cfg.MODEL.MASK_ON:
-            blobs_out += ['mask_rois', 'mask_int32']
+            blobs_out += ['mask_rois', 'masks_int32']
 
         blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
-
+        name = 'GenerateHardExamplesOp:' + ','.join(
+            [str(b) for b in blobs_in]
+        )
         outputs = self.net.Python(
             GenerateHardExamplesOp(self.train).forward
         )(blobs_in, blobs_out, name=name)
 
         return outputs
+    '''
+    def GenerateOHEMInferenceBlobs(self):
+        blobs_in = []#act as place holder, not used
+        blobs_in = [core.ScopedBlobReference(b) for b in blobs_in]
+
+        blobs_out = ['fc6_ohem_w','fc6_ohem_b','fc7_ohem_w','fc7_ohem_b',\
+                    'cls_score_odai_ohem_w','cls_score_odai_ohem_b',\
+                    'bbox_pred_odai_ohem_w','bbox_pred_odai_ohem_b']
+        blobs_out = [core.ScopedBlobReference(b) for b in blobs_out]
+
+        name = 'GenerateOHEMInferenceBlobsOp:' + ','.join(
+            [str(b) for b in blobs_in]
+        )
+        outputs = self.net.Python(
+            GenerateOHEMInferenceBlobsOp(self.train).forward
+        )(blobs_in, blobs_out, name=name)
+
+        return outputs
+    '''
+    
 
     def DropoutIfTraining(self, blob_in, dropout_rate):
         """Add dropout to blob_in if the model is in training mode and

@@ -111,7 +111,7 @@ def add_mask_rcnn_blobs_after_ohem(blobs, sampled_rois, roidb, im_info):
         im_scale = im_info[im_i, -1]
         batch_inds = np.where(sampled_rois[:,0]==im_i)[0]
         if len(batch_inds)>0:
-            mask_blobs[im_i]['labels_int32'] = blobs['labels_int32'][batch_inds,:]
+            mask_blobs[im_i]['labels_int32'] = blobs['labels_int32'][batch_inds]
             batch_rois = sampled_rois[batch_inds,:]
             batch_boxes = batch_rois[:,1:]/im_scale
             

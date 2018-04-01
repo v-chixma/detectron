@@ -190,13 +190,12 @@ class GenerateHardExamplesOp(object):
         blobs = {k: [] for k in output_blob_names}
 
         blobs['rois'] = rois_ohem[order,:]
-        blobs['labels_int32'] = labels_int32_ohem[order,:] 
+        blobs['labels_int32'] = labels_int32_ohem[order] 
         blobs['bbox_targets'] = bbox_targets_ohem[order,:]
-        blobs['bbox_inside_weights'] = bbox_inside_weights[order,:]
+        blobs['bbox_inside_weights'] = bbox_inside_weights_ohem[order,:]
         blobs['bbox_outside_weights'] = bbox_outside_weights_ohem[order,:]
 
         if cfg.MODEL.MASK_ON:
-            output_blob_names += ['mask_rois','masks_int32']
             sampled_rois = blobs['rois']
             roi_data.mask_rcnn.add_mask_rcnn_blobs_after_ohem(
                 blobs, sampled_rois, roidb, im_info
@@ -209,10 +208,10 @@ class GenerateHardExamplesOp(object):
 def _get_cls_loss_for_each_roi(cls_prob_ohem,labels_int32_ohem):
     cls_prob_ohem = cls_prob_ohem.reshape((-1,cfg.MODEL.NUM_CLASSES))
     labels_int32_ohem = labels_int32_ohem.reshape((-1,1))
-    print('cls_prob_ohem.shape: ',cls_prob_ohem.shape)
-    print('labels_int32_ohem.shape: ',labels_int32_ohem.shape)
-    print (np.sum(cls_prob_ohem,axis=1) == 1.0).all()
-    pdb.set_trace()
+    #print('cls_prob_ohem.shape: ',cls_prob_ohem.shape)
+    #print('labels_int32_ohem.shape: ',labels_int32_ohem.shape)
+    #print (np.sum(cls_prob_ohem,axis=1) == 1.0).all()
+    #pdb.set_trace()
     
     eps = 1e-6
     cls_loss_for_each_roi = np.zeros((labels_int32_ohem.shape[0],1))
@@ -244,8 +243,47 @@ def _get_bbox_loss_for_each_roi(bbox_pred_odai_ohem,bbox_targets_ohem,\
     bbox_loss_for_each_roi = np.sum(tmp,axis=1)
     return bbox_loss_for_each_roi.reshape((-1,1))
 
+'''
+class GenerateOHEMInferenceBlobsOp(object):
+    def __init__(self, train):
+        self._train = train
 
+    def forward(self, inputs, outputs):
+        """See modeling.detector.CollectAndDistributeFpnRpnProposals for
+        inputs/outputs documentation.
+        """
 
+        output_blob_names = ['fc6_ohem_w','fc6_ohem_b','fc7_ohem_w','fc7_ohem_b',\
+                            'cls_score_odai_ohem_w','cls_score_odai_ohem_b',\
+                            'bbox_pred_odai_ohem_w','bbox_pred_odai_ohem_b']
+        
 
+        blobs = {k: [] for k in output_blob_names}
+
+        tmp_w = np.zeros((1024,12544),dtype=np.float32)
+        tmp_b = np.zeros((1024,),dtype=np.float32)
+        blobs['fc6_ohem_w'] = tmp_w
+        blobs['fc6_ohem_b'] = tmp_b
+        
+        tmp_w = np.zeros((1024,1024),dtype=np.float32)
+        tmp_b = np.zeros((1024,),dtype=np.float32)
+        blobs['fc7_ohem_w'] = tmp_w
+        blobs['fc7_ohem_b'] = tmp_b
+        
+        tmp_w = np.zeros((16,1024),dtype=np.float32)
+        tmp_b = np.zeros((16,),dtype=np.float32)
+        blobs['cls_score_odai_ohem_w'] = tmp_w
+        blobs['cls_score_odai_ohem_b'] = tmp_b
+       
+        tmp_w = np.zeros((64,1024),dtype=np.float32)
+        tmp_b = np.zeros((64,),dtype=np.float32)
+        blobs['bbox_pred_odai_ohem_w'] = tmp_w
+        blobs['bbox_pred_odai_ohem_b'] = tmp_b
+        
+
+        
+        for i, k in enumerate(output_blob_names):
+            blob_utils.py_op_copy_blob(blobs[k], outputs[i])
+'''
 
 

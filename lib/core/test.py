@@ -162,13 +162,13 @@ def im_detect_bbox(model, im, boxes=None):
         boxes = rois[:, 1:5] / im_scales[0]
 
     # Softmax class probabilities
-    scores = workspace.FetchBlob(core.ScopedName('cls_prob')).squeeze()
+    scores = workspace.FetchBlob(core.ScopedName('cls_prob_ohem')).squeeze()
     # In case there is 1 proposal
     scores = scores.reshape([-1, scores.shape[-1]])
 
     if cfg.TEST.BBOX_REG:
         # Apply bounding-box regression deltas
-        box_deltas = workspace.FetchBlob(core.ScopedName('bbox_pred_odai')).squeeze()
+        box_deltas = workspace.FetchBlob(core.ScopedName('bbox_pred_odai_ohem')).squeeze()
         # In case there is 1 proposal
         box_deltas = box_deltas.reshape([-1, box_deltas.shape[-1]])
         if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
