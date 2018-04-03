@@ -68,4 +68,4 @@ TEST:
   RPN_PRE_NMS_TOP_N: 1000  # Per FPN level
   RPN_POST_NMS_TOP_N: 1000
   RPN_MIN_SIZE: 0
-OUTPUT_DIR: ./tmp/rpn-frcn-mask-fixed_bug1 #train_with_an32_FANet_rotation_no_diff2
+OUTPUT_DIR: ./tmp/rpn-frcn-mask-bottom-up-aug #train_with_an32_FANet_rotation_no_diff2
