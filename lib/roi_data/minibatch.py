@@ -38,6 +38,8 @@ import roi_data.retinanet
 import roi_data.rpn
 import utils.blob as blob_utils
 import pdb
+import os
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +101,12 @@ def _get_image_blob(roidb):
     processed_ims = []
     im_scales = []
     for i in range(num_images):
-        im = cv2.imread(roidb[i]['image'])
+        imPath = roidb[i]['image']
+        imPath = os.path.join(r'/disk1/yxzhu/data/icpr2018/68_dataset_cxma/train_split_cxma/images',\
+                                os.path.basename(imPath))
+        #print(imPath)
+        #pdb.set_trace()
+        im = cv2.imread(imPath)
         assert im is not None, \
             'Failed to read image \'{}\''.format(roidb[i]['image'])
         if roidb[i]['flipped']:
@@ -114,7 +121,7 @@ def _get_image_blob(roidb):
             rotated_im = cv2.warpAffine(im,M,(w,h))
             roidb[i]['height'] = rotated_im.shape[0]
             roidb[i]['width'] = rotated_im.shape[1]
-            print(angle,im.shape,rotated_im.shape)
+            #print(angle,im.shape,rotated_im.shape)
             #pdb.set_trace()
             im = rotated_im
         
