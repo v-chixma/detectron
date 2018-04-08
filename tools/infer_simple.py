@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/debug_infer',
+        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/FANet_aug_ohem/val/iter3',
         type=str
     )
     parser.add_argument(
