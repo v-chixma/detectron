@@ -37,6 +37,7 @@ import roi_data.fast_rcnn
 import roi_data.retinanet
 import roi_data.rpn
 import utils.blob as blob_utils
+import os
 import pdb
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,12 @@ def _get_image_blob(roidb):
     processed_ims = []
     im_scales = []
     for i in range(num_images):
-        im = cv2.imread(roidb[i]['image'])
+        imPath = roidb[i]['image']
+        imPath = os.path.join(r'/home/chixma/mount_143/train_split_cxma/images',\
+                                os.path.basename(imPath))
+        #print(imPath)
+        #pdb.set_trace()
+        im = cv2.imread(imPath)
         assert im is not None, \
             'Failed to read image \'{}\''.format(roidb[i]['image'])
         if roidb[i]['flipped']:
