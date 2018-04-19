@@ -78,7 +78,7 @@ def add_fast_rcnn_losses(model):
             'bbox_outside_weights'
         ],
         'loss_bbox',
-        scale=2.0 * model.GetLossScale()
+        scale=model.GetLossScale()
     )
     loss_gradients = blob_utils.get_loss_gradients(model, [loss_cls, loss_bbox])
     model.Accuracy(['cls_prob', 'labels_int32'], 'accuracy_cls')

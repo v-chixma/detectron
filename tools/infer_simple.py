@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='/home/yxzh/mount_31/cxma/software/detectron/tmp/rpn-frcn-mask-test',
+        default='./tmp/rpn-frcn-mask-ms-halflr/val/iter18_ms',
         type=str
     )
     parser.add_argument(
