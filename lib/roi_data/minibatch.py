@@ -101,7 +101,7 @@ def _get_image_blob(roidb):
     im_scales = []
     for i in range(num_images):
         imPath = roidb[i]['image']
-        imPath = os.path.join(r'/home/chixma/mount_143/train_split_cxma/images',\
+        imPath = os.path.join(r'/home/chixma/mount_143/trainval_split_cxma/images',\
                                 os.path.basename(imPath))
         #print(imPath)
         #pdb.set_trace()
