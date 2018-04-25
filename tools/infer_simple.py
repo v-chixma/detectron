@@ -72,7 +72,7 @@ def parse_args():
         '--output-dir',
         dest='output_dir',
         help='directory for visualization pdfs (default: /tmp/infer_simple)',
-        default='./tmp/rpn-frcn-mask-ms-halflr/val/iter18_ms',
+        default='./tmp/rpn-frcn-mask-ms-R50-trainval/test/iter18_ms',
         type=str
     )
     parser.add_argument(
