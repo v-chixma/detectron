@@ -25,6 +25,8 @@ lib/utils/cython_*.c
 
 #training output 
 tmp/*
+tmp_68/*
+nohup.out
 train/*
 
 #pretrained models
