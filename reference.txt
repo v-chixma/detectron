@@ -1,0 +1,38 @@
+ server-68:
+ python ./tools/infer_simple.py --cfg=./configs/12_2017_baselines/e2e_mask_rcnn_R-50-FPN_1x.yaml --wts=./tmp/train_with_an8_FANet/train/odai_train/generalized_rcnn/model_final.pkl /home/yxzh/dataset/icpr2018/val_split_cxma/images
+ /home/yxzh/mount_31/cxma/dataset/odai/test_split_cxma/images
+ CUDA_VISIBLE_DEVICES=0 nohup python ./tools/train_net.py --cfg=./configs/12_2017_baselines/e2e_mask_rcnn_R-50-FPN_1x.yaml --skip-test 2>&1 1>./log/train_with_an32_FANet_rotation_no_diff2.log &
+ 
+ 
+ server-143： 
+ detectron:
+ /disk1/chixma/software/detectron/
+ 
+ train_val data：
+ /disk1/yxzhu/data/icpr2018/68_dataset_cxma/train_split_cxma/(images & labelTxt & train.txt)
+ /disk1/yxzhu/data/icpr2018/68_dataset_cxma/val_split_cxma/(images & labelTxt & val.txt) 100 split
+ 
+ test data:(256 split 18801 images)
+ /disk1/mount/cxma/dataset/odai/test_split_cxma/images
+ 原图：
+ /disk1/yxzhu/data/icpr2018/DOTA_TEST/test/images/images
+ split:
+ /disk1/yxzhu/data/icpr2018/68_dataset_cxma/test_split_cxma/images    256 split 
+ 
+ DOTA测试集(256 split 11627 images)
+ 原图：
+ /disk1/chixma/dataset/DOTA_TEST/images/
+ split:
+ /disk1/yxzhu/data/icpr2018/68_dataset_cxma/dota_test_split_cxma/images    256 split
+ 
+ DOTA_devkit:
+ /disk1/yxzhu/data/icpr2018/68_DOTA_devkit_cxma/
+ 
+ 143 infer code
+ python ./tools/infer_simple.py --cfg=./configs/12_2017_baselines/e2e_mask_rcnn_R-50-FPN_1x.yaml --wts=./tmp/PANet_aug_multiscale/train/odai_train/generalized_rcnn/model_final.pkl --gpu=0 /disk1/yxzhu/data/icpr2018/68_dataset_cxma/val_split_cxma/images
+ 
+ 143 caffe path
+ /home/chixma/software/caffe/build/tools/caffe
+ pycaffe：
+ /home/chixma/software/caffe/python/
+ 
